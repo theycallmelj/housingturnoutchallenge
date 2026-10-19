@@ -1,0 +1,117 @@
+{
+  "sourceCommit": "8b9199cd5a51270de8910f58ad94332479492300",
+  "sourceProject": "State Housing Policy Lab",
+  "destination": "prototypes/state-housing-policy-lab",
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "bd6f922435cc6b67cffa73e8cb6fe62c1d7984c4fd01ff991a75e36a7a98e0d8",
+      "bytes": 38
+    },
+    {
+      "path": ".openai/hosting.json",
+      "sha256": "a90b83bba064723429936dcbf7accb5667546f8a6b5be7fc1283186b9c844483",
+      "bytes": 100
+    },
+    {
+      "path": "DEPENDENCIES.md",
+      "sha256": "fbfa97d7d6a7fe53e771eae8f46a88d2320866466983cbfe603e0cef5a280f92",
+      "bytes": 1553
+    },
+    {
+      "path": "QA.md",
+      "sha256": "5465911aff043c4dcd2d7b071b0011cbf54dc3f86f3256df479c4937aee3201f",
+      "bytes": 3988
+    },
+    {
+      "path": "README.md",
+      "sha256": "e099f8e034c8809a607c2ce21058fa4e692b82bbb9dd352f533b520aa641a8cf",
+      "bytes": 8989
+    },
+    {
+      "path": "index.html",
+      "sha256": "5a30ebfcd9f66416fa43375b1e688c3573e8900199e71e5fadac639f6253969a",
+      "bytes": 462
+    },
+    {
+      "path": "package.json",
+      "sha256": "7061b3d297147963f8c4ad6d5bbcd26645b4566fffa7da5e3bd955fbd6c875b7",
+      "bytes": 441
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "1f67d17862b7528a2b8e687b3f1e1d8b6b67191355b68440886020df4c6b9f2c",
+      "bytes": 22630
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "sha256": "ac02d96368617c760f093cfe61fdec64b6244007ab3553e0d6621f706f54a353",
+      "bytes": 29
+    },
+    {
+      "path": "src/Documents.tsx",
+      "sha256": "363dee81328fe57449d63218bb205ab608a443d4de4db837056cc93e0784080d",
+      "bytes": 5483
+    },
+    {
+      "path": "src/SavedWork.tsx",
+      "sha256": "d3f9a58f27095effd0aaa284f2fab56a0a8b1b71975eff61dcdc7e803698d7a8",
+      "bytes": 2659
+    },
+    {
+      "path": "src/assistant-enhancements.css",
+      "sha256": "f4da2567c063859a57b7ded5789a570e9a3bb00666e7152159198757eeff4a85",
+      "bytes": 11274
+    },
+    {
+      "path": "src/demoAssistant.ts",
+      "sha256": "9f4a17bbbbd6a3a48ac57e80c0c1787e86b18763a82bec442e79b3bfbe029e48",
+      "bytes": 7122
+    },
+    {
+      "path": "src/demoEngine.ts",
+      "sha256": "1868fa21504c14a442d5ff0658fefe8f0f19484d6860a6a6c892a566126bab26",
+      "bytes": 4095
+    },
+    {
+      "path": "src/demoFixtures.ts",
+      "sha256": "5a43dd6c6e652253f3300740abd98811d8ffe2926c9ecc6e21f142f9ac5636f7",
+      "bytes": 1136
+    },
+    {
+      "path": "src/main.tsx",
+      "sha256": "e69acb691befc30a82e38e55646133ccabfa2edd08c9dee252986a8027473301",
+      "bytes": 50090
+    },
+    {
+      "path": "src/scenario.ts",
+      "sha256": "b91555d48359cbb002cede4d5fd90ae31627d28ccd1981d4742b5c64327360f8",
+      "bytes": 3014
+    },
+    {
+      "path": "src/session.ts",
+      "sha256": "5494a73991e9217336084804c1efadcda64e72060e5c0c90c65810fce49ab69e",
+      "bytes": 2921
+    },
+    {
+      "path": "src/siteConfig.ts",
+      "sha256": "7d4083a4cdf2713867fc04a7c4cdde01e1f67a68cfdb7b1f805a8f780163039b",
+      "bytes": 173
+    },
+    {
+      "path": "src/styles.css",
+      "sha256": "5cf91b3189724a5eb0cfe262c6db4f2bad53e0076eba8dcc3da6a7bdcccf7ab1",
+      "bytes": 35850
+    },
+    {
+      "path": "tests/engine.test.ts",
+      "sha256": "c83b6b5bc24d75dd4c21a35cad1824f91db6e77a18c663ff3abe2b1c6be82b91",
+      "bytes": 5978
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "7c650ee933dde32b836e4d2d7daeac349cc13e673532d1cae0467f41e5a7d656",
+      "bytes": 268
+    }
+  ]
+}

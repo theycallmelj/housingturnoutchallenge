@@ -1,0 +1,27 @@
+import { useState } from 'react';
+import { demoAdapter } from './demoEngine';
+import type { Scenario } from './scenario';
+export interface AttachedDocument { name: string; size: number; kind: string }
+interface Props { scenario: Scenario; document: AttachedDocument | null; setDocument: (d: AttachedDocument | null) => void; draft: Scenario | null; setDraft: (s: Scenario | null) => void; apply: (s: Scenario) => void; ask: (p: string) => void }
+export function Documents({scenario, document, setDocument, draft, setDraft, apply, ask}: Props) {
+  const [kind,setKind] = useState('Draft proposal');
+  const [interpretation,setInterpretation] = useState('fourplex');
+  const [before,setBefore] = useState<Scenario>(()=>structuredClone(scenario));
+  const [error,setError] = useState('');
+  function preview() {
+    const next = structuredClone(scenario); next.mode = 'custom';
+    if (interpretation === 'fourplex' || interpretation === 'six') { next.middle.enabled = true; next.middle.units = interpretation === 'six' ? 6 : 4; }
+    if (interpretation === 'larger') next.eligibility = 'larger';
+    if (interpretation === 'parking') { next.parking.enabled = true; next.parking.spaces = 0; }
+    if (interpretation === 'fees') { next.fees.enabled = true; next.fees.reduction = 50; }
+    setBefore(structuredClone(scenario)); setDraft(next);
+  }
+  return <><div className="result-heading"><div><span className="eyebrow">FROM A DOCUMENT TO A PROPOSAL</span><h2>Documents</h2></div><span className="badge demo">Workflow preview</span></div>
+    <p className="section-intro">Bring a bill, draft proposal or proposal from another state into the conversation. Explore how its proposed reforms could translate into your selected state’s scenario, then inspect the differences before applying a package.</p>
+    <div className="document-limit"><b>Document analysis is not connected yet.</b><p>Files stay on your device. This demo records the filename only; it does not read the content, interpret legislation or verify applicability. Choose a structured example below to preview the flow.</p></div>
+    <section className="surface document-upload"><span className="step-label">01 · ADD CONTEXT</span><label>Document type<select value={kind} onChange={e=>setKind(e.target.value)}><option>Bill</option><option>Draft proposal</option><option>Proposal from another state</option></select></label><label className="file-drop">Attach a document<span>PDF, DOCX or TXT · up to 10 MB · local workflow only</span><input type="file" accept=".pdf,.docx,.txt" onChange={e=>{const f=e.target.files?.[0]; if(!f)return; if(f.size>10*1024*1024 || !/\.(pdf|docx|txt)$/i.test(f.name)){setError('Choose a PDF, DOCX or TXT file of 10 MB or less.');e.target.value='';return;} setError('');setDocument({name:f.name,size:f.size,kind});setDraft(null);}}/></label>{error && <p role="alert" className="demo-note">{error}</p>}{document && <div className="attached-file"><b>{document.name}</b><small>{document.kind} · {Math.max(1,Math.round(document.size/1024))} KB · attached locally, not analyzed</small><button className="text-button" onClick={()=>{setDocument(null);setDraft(null);}}>Remove attachment</button></div>}</section>
+    <section className="surface"><span className="step-label">02 · SELECT AN EXAMPLE INTERPRETATION</span><h3>Make the proposed change explicit.</h3><p className="section-intro">These settings are your selections, not extracted from a document.</p><label>Example proposed reform<select value={interpretation} onChange={e=>{setInterpretation(e.target.value);setDraft(null);}}><option value="fourplex">Allow four homes per parcel</option><option value="six">Allow six homes per parcel</option><option value="larger">Exempt smaller municipalities from missing-middle reform</option><option value="parking">Remove residential parking minimums</option><option value="fees">Reduce assumed development fees by 50%</option></select></label><button className="button primary" onClick={preview}>Preview example translation →</button></section>
+    {draft && before && <section className="surface"><span className="step-label">03 · REVIEW & APPLY</span><h3>Compare the proposed settings</h3><div className="amendment-difference"><div><small>Before</small><strong>{demoAdapter.simulate(before).permitted.toLocaleString()}</strong><span>Fictional permitted units</span></div><span>→</span><div><small>Proposed</small><strong>{demoAdapter.simulate(draft).permitted.toLocaleString()}</strong><span>Fictional permitted units</span></div></div><p className="demo-note">{(demoAdapter.simulate(draft).permitted-demoAdapter.simulate(before).permitted).toLocaleString()} permitted units difference · fictional example. An eligibility-only change has no effect if missing middle is off.</p><button className="button primary" onClick={()=>apply(draft)}>Apply proposed settings</button><button className="text-button document-discard" onClick={()=>setDraft(null)}>Discard preview</button></section>}
+    <div className="assistant-inline"><b>Work through it with the AI assistant</b><p>Ask for help understanding the proposal, translating provisions into supported controls, or comparing it with your current package. Responses are scripted in this prototype.</p><button className="text-button" onClick={()=>ask('Help me understand how this document could translate into my current scenario, and explain what needs verification.')}>Discuss this document with the assistant ↗</button></div>
+  </>;
+}
