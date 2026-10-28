@@ -9,28 +9,21 @@ Literature for estimating how state housing reforms change housing production ag
 ```
 
 - [`papers.tsv`](papers.tsv) is the manifest (id, filename, URL, source, topic, license). Add new papers there, with their license.
-- PDFs download to `pdfs/`. **Only CC BY 4.0 papers are committed** (see below). The rest are gitignored, so run the script to get them.
+- PDFs download to `pdfs/`, which is **gitignored. No paper is committed.** They are third-party content, not our original work (Official Rules §7.a), and none uses an OSI license (§7.b.ii). This README cites and briefly summarizes them only.
 - [`checksums.sha256`](checksums.sha256) records the SHA-256 of each PDF as fetched on 2026-10-28 ([`ACCESS_DATE`](ACCESS_DATE)). A mismatch usually means the authors posted a new version.
 
 ### Licenses and redistribution
 
 Licenses were checked on 2026-10-28 from each arXiv abstract page and each PDF's copyright notice.
 
-| License | Papers | In repo? |
-| --- | --- | --- |
-| **CC BY 4.0** | arXiv 2502.00008, 2605.05535, 2606.19334, 2102.11929 | **Yes, committed unmodified** |
-| arXiv non-exclusive distribution license (arXiv may distribute; we may not) | arXiv 2208.01969, 2504.20429, 2305.02159, 2602.08631 | No |
-| © all rights reserved (NBER, Motu, Terner Center, Pew) | nber-w29440, nber-w26573, motu-24-07, terner-sb9-2021, pew-minneapolis-2024 | No |
-| No license stated, so treat it as all rights reserved | epc-wp017, epc-wp018, ejw-stacy-2026, rose-missing-middle | No |
+| License | Papers |
+| --- | --- |
+| CC BY 4.0 | arXiv 2502.00008, 2605.05535, 2606.19334, 2102.11929 |
+| arXiv non-exclusive distribution license (arXiv may distribute; we may not) | arXiv 2208.01969, 2504.20429, 2305.02159, 2602.08631 |
+| © all rights reserved (NBER, Motu, Terner Center, Pew) | nber-w29440, nber-w26573, motu-24-07, terner-sb9-2021, pew-minneapolis-2024 |
+| No license stated, so treat it as all rights reserved | epc-wp017, epc-wp018, ejw-stacy-2026, rose-missing-middle |
 
-**Attribution for the committed CC BY 4.0 papers** (license: https://creativecommons.org/licenses/by/4.0/; no changes made):
-
-- Salazar-Miranda, A. & Talen, E. (2025). *Zoning in American Cities: Are Reforms Making a Difference? An AI-based Analysis.* arXiv:2502.00008. https://arxiv.org/abs/2502.00008
-- Katsumi, M., Fox, M., Wong, A. & Chatha, D. (2026). *Housing Potential Common Data Model and City Digital Twin.* arXiv:2605.05535. https://arxiv.org/abs/2605.05535
-- Peskoff, D., Barrow, J., Vu, C. & Davenport, D. (2026). *Freeing the Law with LOCUS: A Local Ordinance Corpus for the United States.* arXiv:2606.19334. https://arxiv.org/abs/2606.19334
-- Furtado, B. A. (2021). *PolicySpace2: modeling markets and endogenous public policies.* arXiv:2102.11929. https://arxiv.org/abs/2102.11929
-
-To commit a newly added CC BY paper, add a `!research/papers/pdfs/<filename>` line to the root `.gitignore` and an attribution entry here.
+None are committed. Short quotations here follow the publishers' notices (e.g. NBER and Motu allow short extracts with attribution).
 
 A note on arXiv: it has little on zoning and housing supply. Most of this literature is on NBER, SSRN, RePEc, and university working-paper series. The arXiv hits below are mostly methods, data, and measurement papers. Before quoting any number in the Model & Assumptions Overview, check the version and publication status.
 
@@ -69,12 +62,12 @@ There are no open PDFs yet. See the link-only list: Burge & Ihlanfeldt (2006) an
 
 | Paper | Key finding / contribution | Use for our model |
 | --- | --- | --- |
-| **Gyourko, Hartley & Krimmel**, *WRLURI 2018*, NBER w26573 | A regulatory index for about 2,450 US communities. The coasts are most regulated, regulation did not loosen after the Great Recession, and impact-fee use fell from about 75% to 50% of places. | A **state-level stringency covariate** for scaling responses across states |
+| **Gyourko, Hartley & Krimmel**, *WRLURI 2018*, NBER w26573 | A regulatory index for about 2,450 US communities. The coasts are most regulated, regulation did not loosen after the Great Recession, and impact-fee use fell from about 75% to 50% of places. | Context on which states are most constrained. The WRLURI **data** terms are unclear, so the dataset is not used (see [`../data/README.md`](../data/README.md)). Cite the paper's published findings only. |
 | **Stacy, Freemark & Lo (2026)**, reply in *Econ Journal Watch* 23(1) | Defends their 2023 *Urban Studies* result: loosening reforms are associated with **+0.8% supply within 3–9 years** (180 reforms, 1,136 cities). It concedes classification limits. | The best **multi-city US average**, much smaller than Auckland's. Use both as a plausible range. |
 | **Ben-Moshe & Genesove**, *Regulation and Frontier Housing Supply*, arXiv 2208.01969 | Estimates the "regulatory tax" from prices and quantities alone. Israel multifamily: a mean regulatory tax of **47% of price**, minimum efficient scale of about 5 floors. | A method for estimating how much regulation binds, and evidence on scale economies for mid-rise construction |
 | **Adachi**, *Housing production function with unobserved land heterogeneity*, arXiv 2504.20429 | Capital-land substitution in Tokyo | Informs the density/height response in TOD and missing middle |
 | **Salazar-Miranda & Talen (2025)**, *Zoning in American Cities: Are Reforms Making a Difference?*, arXiv 2502.00008 | NLP on zoning codes of more than 2,000 US places. Form-based codes are associated with higher FAR, smaller lots, and more multifamily housing. | A way to measure **which places already have reforms**, so we don't credit the baseline with them |
-| **Oluku & Cheng (2023)**, arXiv 2305.02159 | WRLURI stringency and employment growth (878 jurisdictions) | A worked example of using the WRLURI panel |
+| **Oluku & Cheng (2023)**, arXiv 2305.02159 | WRLURI stringency and employment growth (878 jurisdictions) | Methods reference only (it uses WRLURI, which we don't use) |
 | **Pérez García (2026)**, *Rent Controls: Evidence from Spain*, arXiv 2602.08631 | Difference-in-differences and event study on Catalonia's 2024 rent control | A methods template for a staggered state policy rollout. The topic is out of scope. |
 
 ### Methods, simulation, and data infrastructure
@@ -83,7 +76,7 @@ There are no open PDFs yet. See the link-only list: Burge & Ihlanfeldt (2006) an
 | --- | --- | --- |
 | **Furtado**, *PolicySpace2*, arXiv 2102.11929 | Open-source spatial agent-based model that compares housing policies | An alternative to a pro forma engine. It is probably too opaque for the judging criteria, but it is a reference for policy-comparison design. |
 | **Katsumi, Fox et al. (2026)**, *Housing Potential Common Data Model and City Digital Twin*, arXiv 2605.05535 | A data standard for zoning, land use, and parcels for "housing potential" analysis | A schema idea for our parcel → capacity pipeline |
-| **Peskoff et al. (2026)**, *LOCUS: Local Ordinance Corpus*, arXiv 2606.19334 | Machine-readable ordinance codes for 9,239 US cities and counties | A possible source for current local ADU, parking, and lot rules. Check its license. |
+| **Peskoff et al. (2026)**, *LOCUS: Local Ordinance Corpus*, arXiv 2606.19334 | Machine-readable ordinance codes for 9,239 US cities and counties | A possible source for local ADU, parking, and lot rules. **Don't use the corpus** until its data license is confirmed to pass the rule in [`../data/README.md`](../data/README.md). |
 
 ---
 

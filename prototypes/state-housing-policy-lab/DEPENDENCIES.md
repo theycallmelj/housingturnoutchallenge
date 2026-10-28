@@ -23,4 +23,4 @@ Reviewed local installed package metadata. No paid services, model libraries or 
 | picocolors | 1.1.1 | ISC | Terminal tooling |
 | source-map-js | 1.2.2 | BSD-3-Clause | Build source maps |
 
-The lockfile also describes optional binaries for other platforms; only the installed Windows variants were inspected. No final project license has been selected for the team's original source code.
+The lockfile also describes optional binaries for other platforms; only the installed Windows variants were inspected. The team's original source code is licensed under Apache-2.0 (see the repository root `LICENSE`).

@@ -2,7 +2,7 @@
 
 Instructions for every AI coding agent (Claude Code, Codex, Copilot, Cursor, etc.) and every human contributing to this repository.
 
-This repo is a submission to the [Housing Data and Technology Innovation Challenge](https://housingchallenge.turnout.rocks/handbook.html). The handbook's submission checklist requires three items that **every code change must keep current**:
+This repo is a submission to the [Housing Data and Technology Innovation Challenge](https://housingchallenge.turnout.rocks/handbook.html). The [Official Rules](https://housingchallenge.turnout.rocks/rules.html) control where they differ from the handbook. The handbook's submission checklist requires three items that **every code change must keep current**:
 
 - [ ] Software Bill of Materials (SBOM)
 - [ ] Data provenance documented
@@ -21,7 +21,7 @@ The handbook defines an SBOM as "an inventory of a project's software dependenci
 - Every deployable project (each folder with its own `package.json`, `pyproject.toml`, `Cargo.toml`, etc.) must have an SBOM at `<project>/sbom.cdx.json` in **CycloneDX JSON** format.
 - Regenerate the SBOM whenever you add, remove, or upgrade a dependency, or change a lockfile. Never hand-edit it.
 - Commit lockfiles (`pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, …). An SBOM without a lockfile is not reproducible.
-- Prefer permissive, OSI-approved dependencies (MIT, BSD, Apache-2.0, ISC). Flag any copyleft (GPL/AGPL/LGPL), share-alike data license (ODbL, CC BY-SA), unknown, or proprietary license in the PR description before merging.
+- Dependencies must use a **permissive, OSI-approved license** (MIT, BSD-2/3, Apache-2.0, ISC) (Official Rules §7.b.ii). **Do not add** copyleft (GPL/AGPL/LGPL/MPL), source-available, noncommercial, or unknown-license dependencies. If one is unavoidable, stop and flag it to a human before merging.
 - No paid or proprietary dependencies unless end users can get free access. Disclose any that are used (see §3).
 - Keep each project's human-readable license table (e.g. `DEPENDENCIES.md`) in sync with the SBOM.
 
@@ -48,6 +48,7 @@ The handbook says: "Document every dataset's source, version, access date, licen
 
 **Rules**
 
+- **Data license rule** (Official Rules §7.b.iii, §10.4, §10.5): only use datasets that are public domain / U.S. government works, CC0, or under an explicit open license with no share-alike, noncommercial, or access restrictions. **Do not use** restricted-access data (login-gated, government/non-profit only), ODbL or CC BY-SA data, noncommercial data, or data with no stated license. Sources already rejected for these reasons are listed under "Removed sources and open gaps" in [`research/data/README.md`](research/data/README.md). Don't reintroduce them.
 - Every dataset the code reads must have a provenance file in [`research/data/`](research/data/) (one `.md` per source). Use [`research/data/_TEMPLATE.md`](research/data/_TEMPLATE.md) and fill in every field: name, URL, publisher, version/vintage, **access date**, license, description, geography and time coverage, **cleaning/transformation steps**, and **known limitations**.
 - Raw data goes in `research/data/raw/`, which is gitignored. Every dataset must be fetchable by a committed script (e.g. `scripts/fetch_<source>.{sh,py}`) that pins the exact URL/API query and records a checksum. Small derived tables (< ~5 MB) may be committed if the script that produced them is also committed.
 - Never hard-code a number taken from a dataset without a comment pointing to its provenance file and the exact table/field.
@@ -73,7 +74,8 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 
 ## Other eligibility gates (pass/fail before judging)
 
-- **License:** Apache-2.0 by default (MIT, BSD-2, BSD-3 also allowed). Do not add code that is incompatible with it.
+- **License:** this repository is **Apache-2.0** (see [`LICENSE`](LICENSE)), per Official Rules §7.b.i. All first-party code is contributed under Apache-2.0. Don't add files under other licenses, and don't use public-domain dedications for our own code.
+- **No third-party content in the repo:** don't commit papers, PDFs, images, fonts, code snippets, or datasets authored by others unless they are an OSI-licensed dependency recorded in the SBOM, or public-domain data that passes the data license rule. The submission must be the team's original work (§7.a) and must not infringe copyright (§10.3). Link to external material instead.
 - **Reproducibility:** documented setup and run commands; automated tests for core logic (`pnpm test` or equivalent) must pass.
 - **Security:** no committed secrets; zero unresolved secret-scanning alerts; no unaddressed critical/high Dependabot or CodeQL findings.
 - **Language:** memory-safe languages only (TypeScript/JS, Python, Rust, Go, etc.).
@@ -82,7 +84,7 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 ## Repo map
 
 - `prototypes/` holds UI/engine prototypes. `state-housing-policy-lab` uses fictional fixture data only.
-- `research/papers/` holds the literature index, `papers.tsv` manifest, and `fetch_papers.sh` (PDFs are gitignored; run the script to download them).
+- `research/papers/` holds the literature index, `papers.tsv` manifest, and `fetch_papers.sh` (PDFs are never committed; run the script to download them locally).
 - `research/data/` holds one provenance `.md` per candidate data source.
 - `AI_DISCLOSURE.md` is the AI use log.
 
@@ -93,3 +95,4 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 - [ ] Provenance file added/updated for any new or changed dataset or cleaning step
 - [ ] `AI_DISCLOSURE.md` row added for material AI assistance
 - [ ] No secrets, PII, restricted data, or large raw files committed
+- [ ] No third-party content committed; every new dependency and dataset passes the license rules above

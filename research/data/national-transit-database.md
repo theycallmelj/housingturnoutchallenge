@@ -23,6 +23,6 @@ None yet.
 
 ## Known limitations
 
-- **No stop or station locations.** For the geometry needed to draw TOD buffers, pair it with GTFS / National Transit Map ([transit-stops-gtfs.md](transit-stops-gtfs.md)).
+- **No stop or station locations.** A stop-location source with a clear open license is still needed for TOD buffers. See "Removed sources and open gaps" in [README.md](README.md).
 - Data are at agency/mode level, not route or stop frequency.
 - Small rural or non-federally-funded operators may be missing or reported in reduced form.

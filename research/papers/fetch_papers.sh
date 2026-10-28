@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Download every paper listed in papers.tsv into pdfs/ and record SHA-256 checksums.
-# Only CC BY PDFs are committed (see the license column); rerun this script to fetch the rest.
+# PDFs are third-party content and are never committed; rerun this script to reproduce locally.
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p pdfs
