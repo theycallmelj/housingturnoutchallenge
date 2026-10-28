@@ -1,0 +1,95 @@
+# AGENTS.md
+
+Instructions for every AI coding agent (Claude Code, Codex, Copilot, Cursor, etc.) and every human contributing to this repository.
+
+This repo is a submission to the [Housing Data and Technology Innovation Challenge](https://housingchallenge.turnout.rocks/handbook.html). The handbook's submission checklist requires three items that **every code change must keep current**:
+
+- [ ] Software Bill of Materials (SBOM)
+- [ ] Data provenance documented
+- [ ] AI tools, models, APIs, and dependencies disclosed
+
+A change that adds a dependency, a dataset, or AI-generated code is **not done** until the matching artifact below is updated in the same commit or PR.
+
+---
+
+## 1. Software Bill of Materials (SBOM)
+
+The handbook defines an SBOM as "an inventory of a project's software dependencies."
+
+**Rules**
+
+- Every deployable project (each folder with its own `package.json`, `pyproject.toml`, `Cargo.toml`, etc.) must have an SBOM at `<project>/sbom.cdx.json` in **CycloneDX JSON** format.
+- Regenerate the SBOM whenever you add, remove, or upgrade a dependency, or change a lockfile. Never hand-edit it.
+- Commit lockfiles (`pnpm-lock.yaml`, `uv.lock`, `poetry.lock`, `Cargo.lock`, …). An SBOM without a lockfile is not reproducible.
+- Prefer permissive, OSI-approved dependencies (MIT, BSD, Apache-2.0, ISC). Flag any copyleft (GPL/AGPL/LGPL), share-alike data license (ODbL, CC BY-SA), unknown, or proprietary license in the PR description before merging.
+- No paid or proprietary dependencies unless end users can get free access. Disclose any that are used (see §3).
+- Keep each project's human-readable license table (e.g. `DEPENDENCIES.md`) in sync with the SBOM.
+
+**How to generate**
+
+```bash
+# Node / pnpm projects (run inside the project folder)
+npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file sbom.cdx.json
+
+# Python projects
+pipx run cyclonedx-bom -r -i requirements.txt -o sbom.cdx.json   # or: cyclonedx-py environment
+
+# Any language / container (alternative)
+syft dir:. -o cyclonedx-json=sbom.cdx.json
+```
+
+If you cannot run the generator, say so in your summary. Do not claim the SBOM is current.
+
+---
+
+## 2. Data provenance
+
+The handbook says: "Document every dataset's source, version, access date, license, cleaning steps, and known limitations." Sensitive, confidential, restricted-use, or personally identifiable data is **prohibited**. Large source datasets must **not** be committed; use an automated acquisition process instead.
+
+**Rules**
+
+- Every dataset the code reads must have a provenance file in [`research/data/`](research/data/) (one `.md` per source). Use [`research/data/_TEMPLATE.md`](research/data/_TEMPLATE.md) and fill in every field: name, URL, publisher, version/vintage, **access date**, license, description, geography and time coverage, **cleaning/transformation steps**, and **known limitations**.
+- Raw data goes in `research/data/raw/`, which is gitignored. Every dataset must be fetchable by a committed script (e.g. `scripts/fetch_<source>.{sh,py}`) that pins the exact URL/API query and records a checksum. Small derived tables (< ~5 MB) may be committed if the script that produced them is also committed.
+- Never hard-code a number taken from a dataset without a comment pointing to its provenance file and the exact table/field.
+- Any modeling assumption that is *not* from data (elasticities, take-up rates, per-unit costs, the $50,000/unit fee benchmark, transit-proximity thresholds) must be recorded with its source paper or justification. Papers live in [`research/papers/`](research/papers/).
+- If you change cleaning logic, update the "Cleaning steps" section of the affected provenance file in the same change.
+- Never commit API keys. Read them from environment variables, and document the variable name in the provenance file.
+
+---
+
+## 3. AI tools, models, APIs, and dependencies disclosure
+
+The handbook FAQ says AI use is allowed: "You must be able to explain, test, and secure the result, and disclose material use." It discourages unverified AI-generated code.
+
+**Rules**
+
+- Log material AI use in [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md) at the repo root. Add a row per contribution with the date, tool, model name/ID, what it produced (files/areas), and how a human verified it (tests, review, manual check).
+- **Agents: add your own row before finishing a task** that creates or substantially modifies code, data pipelines, or documentation. Use your exact model ID (e.g. `claude-opus-5-5`, `gpt-5-codex`), not just the vendor.
+- Any AI model or external API called **at runtime** by the shipped tool (LLM endpoints, geocoders, map tiles, etc.) must be listed in `AI_DISCLOSURE.md` under "Runtime AI / external APIs", with its cost and access terms. It must also appear in the SBOM if it is a package dependency.
+- AI-generated code must have tests covering its core logic before merge. Do not commit code you cannot explain.
+- Do not paste secrets, credentials, or restricted data into AI tools.
+
+---
+
+## Other eligibility gates (pass/fail before judging)
+
+- **License:** Apache-2.0 by default (MIT, BSD-2, BSD-3 also allowed). Do not add code that is incompatible with it.
+- **Reproducibility:** documented setup and run commands; automated tests for core logic (`pnpm test` or equivalent) must pass.
+- **Security:** no committed secrets; zero unresolved secret-scanning alerts; no unaddressed critical/high Dependabot or CodeQL findings.
+- **Language:** memory-safe languages only (TypeScript/JS, Python, Rust, Go, etc.).
+- **Modeling expectations:** statewide aggregate impacts vs. a five-year baseline; at least three of the five benchmark scenarios (ADUs, missing middle, transit-oriented density, parking reduction, 50% fee reduction); show ranges and sensitivity, not single-point predictions; keep the model explainable to a non-technical policymaker.
+
+## Repo map
+
+- `prototypes/` holds UI/engine prototypes. `state-housing-policy-lab` uses fictional fixture data only.
+- `research/papers/` holds the literature index, `papers.tsv` manifest, and `fetch_papers.sh` (PDFs are gitignored; run the script to download them).
+- `research/data/` holds one provenance `.md` per candidate data source.
+- `AI_DISCLOSURE.md` is the AI use log.
+
+## Definition of done (checklist for every PR)
+
+- [ ] Tests pass and new core logic has tests
+- [ ] SBOM regenerated if dependencies changed
+- [ ] Provenance file added/updated for any new or changed dataset or cleaning step
+- [ ] `AI_DISCLOSURE.md` row added for material AI assistance
+- [ ] No secrets, PII, restricted data, or large raw files committed
