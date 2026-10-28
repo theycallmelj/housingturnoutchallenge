@@ -1,2 +1,7 @@
-research/papers/pdfs/
 research/data/raw/
+# Paper PDFs are downloaded by research/papers/fetch_papers.sh. Only openly licensed (CC BY) PDFs are committed.
+research/papers/pdfs/*
+!research/papers/pdfs/salazar-miranda-talen-2025_zoning-reforms-ai-analysis.pdf
+!research/papers/pdfs/katsumi-fox-2026_housing-potential-data-model.pdf
+!research/papers/pdfs/peskoff-2026_locus-local-ordinance-corpus.pdf
+!research/papers/pdfs/furtado_policyspace2-abm.pdf

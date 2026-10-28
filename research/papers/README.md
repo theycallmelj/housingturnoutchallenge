@@ -8,9 +8,29 @@ Literature for estimating how state housing reforms change housing production ag
 ./research/papers/fetch_papers.sh
 ```
 
-- [`papers.tsv`](papers.tsv) is the manifest (id, filename, URL, source, topic). Add new papers there.
-- PDFs download to `pdfs/`, which is **gitignored**. Redistribution rights vary by paper (arXiv's default license does not grant redistribution), so we commit the script and the checksums, not the files.
+- [`papers.tsv`](papers.tsv) is the manifest (id, filename, URL, source, topic, license). Add new papers there, with their license.
+- PDFs download to `pdfs/`. **Only CC BY 4.0 papers are committed** (see below). The rest are gitignored, so run the script to get them.
 - [`checksums.sha256`](checksums.sha256) records the SHA-256 of each PDF as fetched on 2026-10-28 ([`ACCESS_DATE`](ACCESS_DATE)). A mismatch usually means the authors posted a new version.
+
+### Licenses and redistribution
+
+Licenses were checked on 2026-10-28 from each arXiv abstract page and each PDF's copyright notice.
+
+| License | Papers | In repo? |
+| --- | --- | --- |
+| **CC BY 4.0** | arXiv 2502.00008, 2605.05535, 2606.19334, 2102.11929 | **Yes, committed unmodified** |
+| arXiv non-exclusive distribution license (arXiv may distribute; we may not) | arXiv 2208.01969, 2504.20429, 2305.02159, 2602.08631 | No |
+| © all rights reserved (NBER, Motu, Terner Center, Pew) | nber-w29440, nber-w26573, motu-24-07, terner-sb9-2021, pew-minneapolis-2024 | No |
+| No license stated, so treat it as all rights reserved | epc-wp017, epc-wp018, ejw-stacy-2026, rose-missing-middle | No |
+
+**Attribution for the committed CC BY 4.0 papers** (license: https://creativecommons.org/licenses/by/4.0/; no changes made):
+
+- Salazar-Miranda, A. & Talen, E. (2025). *Zoning in American Cities: Are Reforms Making a Difference? An AI-based Analysis.* arXiv:2502.00008. https://arxiv.org/abs/2502.00008
+- Katsumi, M., Fox, M., Wong, A. & Chatha, D. (2026). *Housing Potential Common Data Model and City Digital Twin.* arXiv:2605.05535. https://arxiv.org/abs/2605.05535
+- Peskoff, D., Barrow, J., Vu, C. & Davenport, D. (2026). *Freeing the Law with LOCUS: A Local Ordinance Corpus for the United States.* arXiv:2606.19334. https://arxiv.org/abs/2606.19334
+- Furtado, B. A. (2021). *PolicySpace2: modeling markets and endogenous public policies.* arXiv:2102.11929. https://arxiv.org/abs/2102.11929
+
+To commit a newly added CC BY paper, add a `!research/papers/pdfs/<filename>` line to the root `.gitignore` and an attribution entry here.
 
 A note on arXiv: it has little on zoning and housing supply. Most of this literature is on NBER, SSRN, RePEc, and university working-paper series. The arXiv hits below are mostly methods, data, and measurement papers. Before quoting any number in the Model & Assumptions Overview, check the version and publication status.
 

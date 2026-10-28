@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Download every paper listed in papers.tsv into pdfs/ and record SHA-256 checksums.
-# PDFs are not committed (redistribution rights vary); rerun this script to reproduce.
+# Only CC BY PDFs are committed (see the license column); rerun this script to fetch the rest.
 set -euo pipefail
 cd "$(dirname "$0")"
 mkdir -p pdfs
 : > checksums.sha256.tmp
-tail -n +2 papers.tsv | while IFS=$'\t' read -r id filename url source topic; do
+tail -n +2 papers.tsv | while IFS=$'\t' read -r id filename url source topic license; do
   out="pdfs/$filename"
   if [[ ! -s "$out" ]]; then
     echo "fetching $id"
