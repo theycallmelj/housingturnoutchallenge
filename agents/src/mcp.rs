@@ -7,7 +7,9 @@
 //! keeps the SBOM small. [`handle`] is a pure request → response function so
 //! it can be tested without a transport.
 
+use crate::models::Backend;
 use crate::ontology::Ontology;
+use crate::panel::Panel;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
@@ -43,6 +45,11 @@ fn tool_list() -> Value {
                 "scenario": {"type": "string"},
                 "usable_only": {"type": "boolean"}
             }}
+        },
+        {
+            "name": "ask_experts",
+            "description": "Ask the full expert panel: the orchestrator routes the question to the relevant domain experts (each limited to its own tools), then returns their combined answer and which experts were consulted.",
+            "inputSchema": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
         },
         {
             "name": "get_entity",
@@ -127,8 +134,25 @@ pub fn handle(o: &Ontology, msg: &Value) -> Option<Value> {
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
 }
 
+/// [`handle`], plus `ask_experts`, which needs the async expert panel.
+pub async fn handle_with_panel(o: &Ontology, panel: &Panel, msg: &Value) -> Option<Value> {
+    let is_ask = msg.get("method").and_then(Value::as_str) == Some("tools/call")
+        && msg.pointer("/params/name").and_then(Value::as_str) == Some("ask_experts");
+    if !is_ask {
+        return handle(o, msg);
+    }
+    let id = msg.get("id").cloned()?;
+    let question = msg.pointer("/params/arguments/question").and_then(Value::as_str).unwrap_or("");
+    let result = match panel.ask(question).await {
+        Ok(a) => text_result(format!("{}\n\nExperts consulted: {}", a.text, a.consulted.join(", ")), false),
+        Err(e) => text_result(format!("panel error: {e}"), true),
+    };
+    Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+}
+
 /// Serve on stdin/stdout until EOF.
-pub async fn serve_stdio(o: &Ontology) -> anyhow::Result<()> {
+pub async fn serve_stdio(o: &'static Ontology) -> anyhow::Result<()> {
+    let panel = Panel::new(o, Backend::from_env())?;
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     let mut stdout = tokio::io::stdout();
     while let Some(line) = lines.next_line().await? {
@@ -136,7 +160,7 @@ pub async fn serve_stdio(o: &Ontology) -> anyhow::Result<()> {
             continue;
         }
         let response = match serde_json::from_str::<Value>(&line) {
-            Ok(msg) => handle(o, &msg),
+            Ok(msg) => handle_with_panel(o, &panel, &msg).await,
             Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": e.to_string()}})),
         };
         if let Some(r) = response {
@@ -190,6 +214,17 @@ mod tests {
         let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
             "params": {"name": "get_entity", "arguments": {"id": "nope"}}})).unwrap();
         assert_eq!(r["result"]["isError"], true);
+    }
+
+    #[tokio::test]
+    async fn ask_experts_runs_the_panel() {
+        let panel = Panel::new(o(), Backend::Offline).unwrap();
+        let r = handle_with_panel(o(), &panel, &json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
+            "params": {"name": "ask_experts", "arguments": {"question": "Do duplex legalizations get built?"}}}))
+            .await
+            .unwrap();
+        let text = r["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("Experts consulted: missing_middle"), "{text}");
     }
 
     #[test]

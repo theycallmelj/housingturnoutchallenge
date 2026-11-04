@@ -303,6 +303,9 @@ impl Ontology {
         }
         let usable = self.find_datasets(Some(domain_id), None, true);
         out.push_str("\nUSABLE DATASETS (license open_verified)\n");
+        if usable.is_empty() {
+            out.push_str("  (none yet; see research/data/README.md for open gaps)\n");
+        }
         for d in &usable {
             out.push_str(&format!("  - [{}] {}: {}\n", d.id, d.name, d.role));
         }
