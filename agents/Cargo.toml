@@ -1,0 +1,25 @@
+[package]
+name = "housing-agents"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Expert agents, an orchestrator and an MCP server over the housing policy evidence ontology, built on condesate."
+publish = false
+
+[features]
+# Real Anthropic model calls via condesate's `remote` feature. Off by default:
+# the offline, deterministic models answer from the ontology alone, so builds
+# and tests never need network access or an API key.
+llm = ["condesate/remote"]
+
+[dependencies]
+condesate = "0.1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
+async-trait = "0.1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "housing-mcp"
+path = "src/bin/housing_mcp.rs"
