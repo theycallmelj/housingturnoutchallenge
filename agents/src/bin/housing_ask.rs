@@ -3,10 +3,13 @@
 //!     cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- "How many ADUs would a state law add?"
 //!     cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- --audit "..."
 //!
-//! Runs offline by default. Build with `--features llm` and set
-//! `ANTHROPIC_API_KEY` (and optionally `HOUSING_AGENT_MODEL`) to use Claude.
+//! Runs offline by default. To use open Apache-2.0 models, build with
+//! `--features llm` and point `HOUSING_LLM_BASE_URL` at an OpenAI-compatible
+//! server (e.g. `http://localhost:11434/v1` for Ollama). Pick models with
+//! `HOUSING_MODEL_PROFILE`, `HOUSING_LEADER_MODEL`, `HOUSING_EXPERT_MODEL` and
+//! `HOUSING_EXPERT_MODEL_<DOMAIN>`; see agents/model-registry.json.
 
-use housing_agents::{models::Backend, ontology::Ontology, panel::Panel};
+use housing_agents::{ontology::Ontology, panel::Panel};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,10 +24,9 @@ async fn main() -> anyhow::Result<()> {
         std::process::exit(2);
     }
 
-    let backend = Backend::from_env();
-    let answer = Panel::new(Ontology::bundled(), backend)?.ask(&question).await?;
+    let answer = Panel::from_env(Ontology::bundled())?.ask(&question).await?;
     println!("{}", answer.text);
-    println!("\n(backend: {backend:?}; experts consulted: {})", answer.consulted.join(", "));
+    println!("\n(models: {}; experts consulted: {})", answer.models, answer.consulted.join(", "));
     if show_audit {
         println!("\n--- permission audit trail ---");
         for line in &answer.audit {

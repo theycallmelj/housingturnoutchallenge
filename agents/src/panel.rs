@@ -12,7 +12,7 @@
 //! own `<domain>.*` tools plus `ontology.get`, and write only under
 //! `findings/<domain>/`. Every check lands in the kernel's audit trail.
 
-use crate::models::{self, Backend, OfflineExpertModel, OfflineOrchestratorModel};
+use crate::models::{ModelPlan, OfflineExpertModel, OfflineOrchestratorModel};
 use crate::ontology::{Domain, Ontology};
 use crate::tools::domain_tools;
 use anyhow::{anyhow, Result};
@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use condesate::{
     Action, Agent, AgentContext, AgentLoop, AgentManifest, BasicAgent, Bus,
     GrantSet, GuardedServices, HarnessId, InMemoryStorage, Kernel, MemoryAudit, Message,
-    ModelClass, Pattern, ReActLoop, ResourcePattern, Rule, RuleSetPolicy, ServiceHandle, Storage,
+    Pattern, ReActLoop, ResourcePattern, Rule, RuleSetPolicy, ServiceHandle, Storage,
     SubjectMatch, SystemClock, TenantId, Tool, ToolSpec, TrustTier,
 };
 use serde_json::Value;
@@ -29,21 +29,6 @@ use std::sync::Arc;
 
 const ORCHESTRATOR: &str = "orchestrator";
 const TENANT: &str = "housing-challenge";
-
-fn model_class(backend: Backend) -> ModelClass {
-    let (provider, family) = match backend {
-        Backend::Offline => ("offline", "deterministic"),
-        #[cfg(feature = "llm")]
-        Backend::Anthropic => ("anthropic", "claude"),
-    };
-    ModelClass {
-        provider: provider.into(),
-        family: family.into(),
-        revision: env!("CARGO_PKG_VERSION").into(),
-        embedding_space: None,
-        quantization: None,
-    }
-}
 
 fn expert_name(domain: &str) -> String {
     format!("expert.{domain}")
@@ -71,11 +56,11 @@ fn root_grants() -> GrantSet {
 /// The orchestrator asks for root's full shape: its tool and memory rules
 /// keep an open subject so they can be delegated to experts, and only it may
 /// spawn.
-fn orchestrator_manifest(backend: Backend) -> AgentManifest {
+fn orchestrator_manifest(plan: &ModelPlan) -> AgentManifest {
     AgentManifest {
         harness: HarnessId::new(ORCHESTRATOR),
         agent: ORCHESTRATOR.into(),
-        model_class: model_class(backend),
+        model_class: plan.model_class(None),
         tenant: TenantId::new(TENANT),
         requested_trust: TrustTier::Privileged,
         requested: root_grants().rules,
@@ -85,12 +70,12 @@ fn orchestrator_manifest(backend: Backend) -> AgentManifest {
 
 /// An expert asks only for its own tools, the shared lookup, and its own
 /// findings namespace.
-pub fn expert_manifest(domain: &str, backend: Backend) -> AgentManifest {
+pub fn expert_manifest(domain: &str, plan: &ModelPlan) -> AgentManifest {
     let name = expert_name(domain);
     AgentManifest {
         harness: HarnessId::new(name.clone()),
         agent: name.clone(),
-        model_class: model_class(backend),
+        model_class: plan.model_class(Some(domain)),
         tenant: TenantId::new(TENANT),
         requested_trust: TrustTier::Sandboxed,
         requested: vec![
@@ -126,7 +111,7 @@ fn raw_services(me: &str, storage: Arc<dyn Storage>) -> ServiceHandle {
     }
 }
 
-fn expert_prompt(domain: &Domain, tools: &[ToolSpec], backend: Backend) -> String {
+fn expert_prompt(domain: &Domain, tools: &[ToolSpec], plan: &ModelPlan) -> String {
     let base = format!(
         "You are the {label} expert on a housing policy panel. Scope: {desc}\n\
          Always call {id}.evidence_brief with the question first, and answer only from tool results.\n\
@@ -137,26 +122,26 @@ fn expert_prompt(domain: &Domain, tools: &[ToolSpec], backend: Backend) -> Strin
         desc = domain.description,
         id = domain.id,
     );
-    let _ = tools; // only the llm backend needs the tool list in the prompt
-    match backend {
-        Backend::Offline => base,
-        #[cfg(feature = "llm")]
-        Backend::Anthropic => format!("{base}\n\n{}", condesate::tool_instructions(tools)),
+    with_tool_instructions(base, tools, plan)
+}
+
+/// Real models need the prompted tool-calling convention spelled out; the
+/// offline models call tools directly.
+fn with_tool_instructions(base: String, tools: &[ToolSpec], plan: &ModelPlan) -> String {
+    if plan.is_offline() {
+        base
+    } else {
+        format!("{base}\n\n{}", condesate::tool_instructions(tools))
     }
 }
 
-fn orchestrator_prompt(tools: &[ToolSpec], backend: Backend) -> String {
+fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
     let base = "You coordinate a panel of housing policy experts for a state policy simulation challenge \
          (five-year horizon; ADU, missing middle, transit-oriented density, parking and 50% fee-cut scenarios). \
          Consult every expert whose domain the question touches, then synthesize. Keep each expert's figures \
          tied to their study ids and outcome measures. Never add effects across scenarios or outcome types; \
          flag interactions and disagreements instead.";
-    let _ = tools; // only the llm backend needs the tool list in the prompt
-    match backend {
-        Backend::Offline => base.to_string(),
-        #[cfg(feature = "llm")]
-        Backend::Anthropic => format!("{base}\n\n{}", condesate::tool_instructions(tools)),
-    }
+    with_tool_instructions(base.to_string(), tools, plan)
 }
 
 /// `consult.<domain>`: spawn the domain expert under attenuated authority,
@@ -165,7 +150,7 @@ pub struct ConsultExpert {
     domain: String,
     agent: Arc<dyn Agent>,
     storage: Arc<dyn Storage>,
-    backend: Backend,
+    plan: Arc<ModelPlan>,
 }
 
 #[async_trait]
@@ -184,7 +169,7 @@ impl Tool for ConsultExpert {
             .ok_or_else(|| anyhow!("missing string arg 'question'"))?;
         let name = expert_name(&self.domain);
         let child = svc
-            .spawn_child(&expert_manifest(&self.domain, self.backend), raw_services(&name, self.storage.clone()))
+            .spawn_child(&expert_manifest(&self.domain, &self.plan), raw_services(&name, self.storage.clone()))
             .await
             .map_err(|r| anyhow!("spawn of {name} refused: {r}"))?;
         child.begin_activation(format!("{name}:{question}"), 1024 * 1024);
@@ -206,25 +191,47 @@ pub struct PanelAnswer {
     pub consulted: Vec<String>,
     /// One line per permission decision, in order.
     pub audit: Vec<String>,
+    /// Which models answered.
+    pub models: String,
 }
 
 pub struct Panel {
     ontology: &'static Ontology,
-    backend: Backend,
+    plan: Arc<ModelPlan>,
     experts: HashMap<String, Arc<dyn Agent>>,
 }
 
 impl Panel {
-    pub fn new(ontology: &'static Ontology, backend: Backend) -> Result<Self> {
+    pub fn new(ontology: &'static Ontology, plan: ModelPlan) -> Result<Self> {
         let mut experts: HashMap<String, Arc<dyn Agent>> = HashMap::new();
         for d in &ontology.domains {
             let tools = domain_tools(ontology, &d.id);
             let specs: Vec<ToolSpec> = tools.iter().map(|t| t.spec()).collect();
-            let model = models::provider(backend, Arc::new(OfflineExpertModel { domain: d.id.clone() }))?;
-            let agent = BasicAgent::new(expert_name(&d.id), expert_prompt(d, &specs, backend), model, tools);
+            let model = plan.expert_provider(&d.id, Arc::new(OfflineExpertModel { domain: d.id.clone() }))?;
+            let agent = BasicAgent::new(expert_name(&d.id), expert_prompt(d, &specs, &plan), model, tools);
             experts.insert(d.id.clone(), Arc::new(agent));
         }
-        Ok(Self { ontology, backend, experts })
+        Ok(Self { ontology, plan: Arc::new(plan), experts })
+    }
+
+    /// The domain ids, in ontology order, that a model plan must cover.
+    pub fn domain_ids(ontology: &Ontology) -> Vec<&str> {
+        ontology.domains.iter().map(|d| d.id.as_str()).collect()
+    }
+
+    /// Models chosen from `HOUSING_*` environment variables (offline if
+    /// `HOUSING_LLM_BASE_URL` is unset).
+    pub fn from_env(ontology: &'static Ontology) -> Result<Self> {
+        Self::new(ontology, ModelPlan::from_env(&Self::domain_ids(ontology))?)
+    }
+
+    /// Deterministic offline models only.
+    pub fn offline(ontology: &'static Ontology) -> Self {
+        Self::new(ontology, ModelPlan::offline(&Self::domain_ids(ontology))).expect("offline panel")
+    }
+
+    pub fn plan(&self) -> &ModelPlan {
+        &self.plan
     }
 
     /// The agent for one domain expert, for callers that run it directly.
@@ -236,7 +243,7 @@ impl Panel {
         let storage = InMemoryStorage::new();
         let audit = MemoryAudit::new();
         let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), audit.clone(), Arc::new(SystemClock));
-        let admission = kernel.admit(&orchestrator_manifest(self.backend), None);
+        let admission = kernel.admit(&orchestrator_manifest(&self.plan), None);
         let services = Arc::new(kernel.attach(&admission, raw_services(ORCHESTRATOR, storage.clone())));
         services.begin_activation(format!("ask:{question}"), 8 * 1024 * 1024);
 
@@ -249,13 +256,13 @@ impl Panel {
                     domain: d.id.clone(),
                     agent: self.experts[&d.id].clone(),
                     storage: storage.clone(),
-                    backend: self.backend,
+                    plan: self.plan.clone(),
                 }) as Arc<dyn Tool>
             })
             .collect();
         let specs: Vec<ToolSpec> = consult_tools.iter().map(|t| t.spec()).collect();
-        let model = models::provider(self.backend, Arc::new(OfflineOrchestratorModel { ontology: self.ontology }))?;
-        let orchestrator = BasicAgent::new(ORCHESTRATOR, orchestrator_prompt(&specs, self.backend), model, consult_tools);
+        let model = self.plan.leader_provider(Arc::new(OfflineOrchestratorModel { ontology: self.ontology }))?;
+        let orchestrator = BasicAgent::new(ORCHESTRATOR, orchestrator_prompt(&specs, &self.plan), model, consult_tools);
 
         let mut ctx = AgentContext::new(services.clone());
         ctx.transcript.push(Message::user(question.to_string()));
@@ -270,7 +277,7 @@ impl Panel {
         consulted.sort();
         consulted.dedup();
         let audit = audit.events().await.iter().map(|e| e.summarize()).collect();
-        Ok(PanelAnswer { text: outcome.final_text, consulted, audit })
+        Ok(PanelAnswer { text: outcome.final_text, consulted, audit, models: self.plan.describe() })
     }
 }
 
@@ -278,8 +285,32 @@ impl Panel {
 mod tests {
     use super::*;
 
+    fn offline_plan() -> ModelPlan {
+        ModelPlan::offline(&Panel::domain_ids(Ontology::bundled()))
+    }
+
+    #[test]
+    fn manifests_record_each_agents_own_model() {
+        use crate::models::{Backend, Registry};
+        use std::collections::BTreeMap;
+        let per = BTreeMap::from([("adu".to_string(), "granite-3.3-8b".to_string())]);
+        let plan = ModelPlan::resolve(
+            Registry::bundled(),
+            Backend::OpenAiCompat { base_url: "http://localhost:11434/v1".into(), api_key: None },
+            Some("workstation"),
+            None,
+            None,
+            &per,
+            &Panel::domain_ids(Ontology::bundled()),
+        )
+        .unwrap();
+        assert_eq!(orchestrator_manifest(&plan).model_class.revision, "qwen3:32b");
+        assert_eq!(expert_manifest("adu", &plan).model_class.revision, "granite3.3:8b");
+        assert_eq!(expert_manifest("fees", &plan).model_class.revision, "qwen3:8b");
+    }
+
     fn panel() -> Panel {
-        Panel::new(Ontology::bundled(), Backend::Offline).unwrap()
+        Panel::offline(Ontology::bundled())
     }
 
     #[tokio::test]
@@ -312,11 +343,11 @@ mod tests {
     async fn an_expert_cannot_invoke_another_domains_tools() {
         let storage = InMemoryStorage::new();
         let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), MemoryAudit::new(), Arc::new(SystemClock));
-        let adm = kernel.admit(&orchestrator_manifest(Backend::Offline), None);
+        let adm = kernel.admit(&orchestrator_manifest(&offline_plan()), None);
         let orch = kernel.attach(&adm, raw_services(ORCHESTRATOR, storage.clone()));
         orch.begin_activation("test", u64::MAX);
         let adu = orch
-            .spawn_child(&expert_manifest("adu", Backend::Offline), raw_services("expert.adu", storage))
+            .spawn_child(&expert_manifest("adu", &offline_plan()), raw_services("expert.adu", storage))
             .await
             .unwrap();
         adu.begin_activation("test", u64::MAX);
@@ -332,16 +363,16 @@ mod tests {
     async fn an_expert_cannot_spawn_further_agents() {
         let storage = InMemoryStorage::new();
         let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), MemoryAudit::new(), Arc::new(SystemClock));
-        let adm = kernel.admit(&orchestrator_manifest(Backend::Offline), None);
+        let adm = kernel.admit(&orchestrator_manifest(&offline_plan()), None);
         let orch = kernel.attach(&adm, raw_services(ORCHESTRATOR, storage.clone()));
         orch.begin_activation("test", u64::MAX);
         let adu = orch
-            .spawn_child(&expert_manifest("adu", Backend::Offline), raw_services("expert.adu", storage.clone()))
+            .spawn_child(&expert_manifest("adu", &offline_plan()), raw_services("expert.adu", storage.clone()))
             .await
             .unwrap();
         adu.begin_activation("test", u64::MAX);
         assert!(adu
-            .spawn_child(&expert_manifest("fees", Backend::Offline), raw_services("expert.fees", storage))
+            .spawn_child(&expert_manifest("fees", &offline_plan()), raw_services("expert.fees", storage))
             .await
             .is_err());
     }

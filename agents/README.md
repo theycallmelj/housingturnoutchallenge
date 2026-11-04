@@ -46,24 +46,49 @@ cargo run --release --manifest-path agents/Cargo.toml --bin housing-mcp
 
 The skills in [`.claude/skills/`](../.claude/skills/) tell agents how to use these tools for each domain.
 
-## Models
+## Models: Apache-2.0 only, leader stronger than experts
 
 | Backend | When | Behavior |
 | --- | --- | --- |
 | Offline (default) | Always available | Deterministic. The orchestrator routes by ontology keywords; each expert pulls its evidence brief and condenses it. It answers only from tool results, needs no network, and is fully reproducible. |
-| Anthropic | Built with `--features llm` **and** `ANTHROPIC_API_KEY` set | Real Claude calls through condesate's `AnthropicModel` and `PromptedToolModel`. The model is chosen by `HOUSING_AGENT_MODEL` (default `claude-sonnet-5-5`). This is a paid API, disclosed in [`AI_DISCLOSURE.md`](../AI_DISCLOSURE.md). |
+| Open models | Built with `--features llm` **and** `HOUSING_LLM_BASE_URL` set | Each agent calls its own model on any OpenAI-compatible server (Ollama, vLLM, llama.cpp). Tool calls use condesate's `PromptedToolModel`. `<think>` reasoning blocks are stripped. |
+
+[`model-registry.json`](model-registry.json) is the allow-list. Every model in it is **Apache-2.0**, verified from its Hugging Face card. When the panel starts, `ModelPlan::resolve` checks two rules and refuses to run otherwise:
+
+1. Every configured model is in the registry with license Apache-2.0. Llama, Gemma, and Claude are listed as rejected, with the reason.
+2. The **leader (orchestrator) outranks every expert** by `capability_rank`. The rank orders models by size and generation; it isn't a benchmark score.
+
+| Profile | Leader | Experts | Hardware |
+| --- | --- | --- | --- |
+| `laptop` (default) | `qwen3-4b` | `qwen3-1.7b` | 8 GB Apple Silicon |
+| `workstation` | `qwen3-32b` | `qwen3-8b` | 32 GB+ or a 24 GB GPU |
+| `server` | `gpt-oss-120b` | `gpt-oss-20b` | 80 GB GPU for the leader |
 
 ```bash
-ANTHROPIC_API_KEY=... cargo run --features llm --manifest-path agents/Cargo.toml --bin housing-ask -- "..."
+# 1. Serve the models (Ollama shown; vLLM or llama-server also work)
+ollama pull qwen3:4b && ollama pull qwen3:1.7b
+
+# 2. Ask the panel
+export HOUSING_LLM_BASE_URL=http://localhost:11434/v1
+cargo run --features llm --manifest-path agents/Cargo.toml --bin housing-ask -- --audit "..."
 ```
 
-**License flag:** the `llm` feature pulls in `webpki-roots` (MPL-2.0) through `condesate/remote` and `reqwest` 0.11. See [`DEPENDENCIES.md`](DEPENDENCIES.md). The default build does not include it.
+| Variable | Effect |
+| --- | --- |
+| `HOUSING_LLM_BASE_URL` | OpenAI-compatible base URL. Unset means offline. |
+| `HOUSING_LLM_API_KEY` | Optional bearer token for a hosted server |
+| `HOUSING_MODEL_PROFILE` | `laptop`, `workstation`, or `server` |
+| `HOUSING_LEADER_MODEL` | Registry id overriding the leader |
+| `HOUSING_EXPERT_MODEL` | Registry id overriding every expert |
+| `HOUSING_EXPERT_MODEL_<DOMAIN>` | Per-expert override, e.g. `HOUSING_EXPERT_MODEL_ADU=granite-3.3-8b` |
+
+Each agent's manifest records the model it runs (e.g. `qwen3:32b` for the orchestrator, `granite3.3:8b` for the ADU expert), so the `--audit` trail shows which model made each call. The MCP server reads the same variables; add them under `env` in `.mcp.json` to use open models there.
 
 ## SBOM
 
-[`sbom.cdx.json`](sbom.cdx.json) is CycloneDX 1.5 for the default build. To regenerate after any dependency change:
+[`sbom.cdx.json`](sbom.cdx.json) is CycloneDX 1.5 covering all features. Every component is permissive; see [`DEPENDENCIES.md`](DEPENDENCIES.md). To regenerate after any dependency change:
 
 ```bash
 cargo install cargo-cyclonedx --locked   # once
-cd agents && cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx
+cd agents && cargo cyclonedx -f json --all-features --spec-version 1.5 --override-filename sbom.cdx
 ```

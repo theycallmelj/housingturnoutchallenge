@@ -7,7 +7,6 @@
 //! keeps the SBOM small. [`handle`] is a pure request → response function so
 //! it can be tested without a transport.
 
-use crate::models::Backend;
 use crate::ontology::Ontology;
 use crate::panel::Panel;
 use serde_json::{json, Value};
@@ -144,7 +143,7 @@ pub async fn handle_with_panel(o: &Ontology, panel: &Panel, msg: &Value) -> Opti
     let id = msg.get("id").cloned()?;
     let question = msg.pointer("/params/arguments/question").and_then(Value::as_str).unwrap_or("");
     let result = match panel.ask(question).await {
-        Ok(a) => text_result(format!("{}\n\nExperts consulted: {}", a.text, a.consulted.join(", ")), false),
+        Ok(a) => text_result(format!("{}\n\nExperts consulted: {}\nModels: {}", a.text, a.consulted.join(", "), a.models), false),
         Err(e) => text_result(format!("panel error: {e}"), true),
     };
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
@@ -152,7 +151,8 @@ pub async fn handle_with_panel(o: &Ontology, panel: &Panel, msg: &Value) -> Opti
 
 /// Serve on stdin/stdout until EOF.
 pub async fn serve_stdio(o: &'static Ontology) -> anyhow::Result<()> {
-    let panel = Panel::new(o, Backend::from_env())?;
+    let panel = Panel::from_env(o)?;
+    eprintln!("housing-mcp: {}", panel.plan().describe());
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     let mut stdout = tokio::io::stdout();
     while let Some(line) = lines.next_line().await? {
@@ -218,7 +218,7 @@ mod tests {
 
     #[tokio::test]
     async fn ask_experts_runs_the_panel() {
-        let panel = Panel::new(o(), Backend::Offline).unwrap();
+        let panel = Panel::offline(o());
         let r = handle_with_panel(o(), &panel, &json!({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
             "params": {"name": "ask_experts", "arguments": {"question": "Do duplex legalizations get built?"}}}))
             .await
