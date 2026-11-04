@@ -424,6 +424,36 @@ mod tests {
         }
     }
 
+    /// Skills cite study and dataset ids in backticks; every snake_case id
+    /// they cite must exist so the skills can't drift from the ontology.
+    #[test]
+    fn ontology_ids_cited_in_skills_exist() {
+        let o = Ontology::bundled();
+        let mut known: HashSet<&str> = HashSet::new();
+        known.extend(o.studies.iter().map(|x| x.id.as_str()));
+        known.extend(o.datasets.iter().map(|x| x.id.as_str()));
+        known.extend(o.domains.iter().map(|x| x.id.as_str()));
+        known.extend(o.scenarios.iter().map(|x| x.id.as_str()));
+        known.extend(o.enums.license_status.keys().map(String::as_str));
+        known.extend(o.enums.evidence_type.keys().map(String::as_str));
+        known.extend(["usable_only", "license_status", "pilot_states"]);
+
+        let skills = Path::new(env!("CARGO_MANIFEST_DIR")).join("../.claude/skills");
+        for entry in std::fs::read_dir(&skills).expect("skills dir") {
+            let path = entry.unwrap().path().join("SKILL.md");
+            let text = std::fs::read_to_string(&path).unwrap();
+            for (i, span) in text.split('`').enumerate() {
+                let is_id = i % 2 == 1
+                    && span.contains('_')
+                    && !span.starts_with("mcp__")
+                    && span.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+                if is_id {
+                    assert!(known.contains(span), "{} cites unknown id `{span}`", path.display());
+                }
+            }
+        }
+    }
+
     #[test]
     fn ontology_every_benchmark_scenario_has_an_expert_domain() {
         let o = Ontology::bundled();
