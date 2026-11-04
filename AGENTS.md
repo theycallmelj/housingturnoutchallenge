@@ -34,6 +34,9 @@ npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file sbom.cdx.j
 # Python projects
 pipx run cyclonedx-bom -r -i requirements.txt -o sbom.cdx.json   # or: cyclonedx-py environment
 
+# Rust projects (once: cargo install cargo-cyclonedx --locked)
+cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx
+
 # Any language / container (alternative)
 syft dir:. -o cyclonedx-json=sbom.cdx.json
 ```
@@ -84,6 +87,9 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 ## Repo map
 
 - `prototypes/` holds UI/engine prototypes. `state-housing-policy-lab` uses fictional fixture data only.
+- `ontology/housing-ontology.json` is the single source of truth for studies, datasets (with license status), scenarios, and expert domains. Edit it there, then run `cargo test --manifest-path agents/Cargo.toml`.
+- `agents/` is the Rust crate on `condesate`: an orchestrator plus one sandboxed expert per domain (`housing-ask`), and the `housing-mcp` server registered in `.mcp.json`.
+- `.claude/skills/` holds one evidence skill per domain plus the `housing-panel` router. Skills must cite only ids that exist in the ontology; a test enforces this.
 - `research/papers/` holds the literature index, `papers.tsv` manifest, and `fetch_papers.sh` (PDFs are never committed; run the script to download them locally).
 - `research/data/` holds one provenance `.md` per candidate data source.
 - `AI_DISCLOSURE.md` is the AI use log.

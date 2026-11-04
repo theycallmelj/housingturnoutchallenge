@@ -5,6 +5,9 @@ Team repository for the [Housing Data and Technology Innovation Challenge](https
 - [`AGENTS.md`](AGENTS.md): contribution rules (SBOM, data provenance, AI disclosure, licensing). Read it first.
 - [`prototypes/`](prototypes/): UI and engine prototypes
 - [`research/`](research/README.md): literature index and data-source provenance
+- [`ontology/`](ontology/README.md): evidence ontology (77 studies, 41 datasets with license status)
+- [`agents/`](agents/README.md): condesate expert panel (`housing-ask`) and MCP server (`housing-mcp`, registered in `.mcp.json`)
+- [`.claude/skills/`](.claude/skills/): one evidence skill per policy domain
 - [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md): AI tool use log
 
 ## License

@@ -45,7 +45,7 @@ A note on arXiv: it has little on zoning and housing supply. Most of this litera
 
 | Paper | Setting & method | Key finding | Use for our model |
 | --- | --- | --- | --- |
-| **Anagol, Ferreira & Rexer**, *Estimating the Economic Value of Zoning Reform*, NBER w29440 | São Paulo 2016 reform; FAR raised along transit corridors; spatial RD plus equilibrium model | Long run: **+1.9% housing stock, −0.5% prices**, with large heterogeneity across neighborhoods. Short run: more multifamily permit filings in upzoned blocks. | The cleanest causal estimate for **transit-corridor density**. It is also a template for turning a permit response into a change in stock. |
+| **Anagol, Ferreira & Rexer**, *Estimating the Economic Value of Zoning Reform*, NBER w29440 | São Paulo 2016 reform; FAR raised along transit corridors; spatial RD plus equilibrium model | Short run: more multifamily permit filings in upzoned blocks. The working paper estimated +1.9% stock and −0.5% prices; **the published version (AEJ: Policy 18(3), 2026) estimates +1.6% stock and −0.4% prices. Use the published figures.** | The cleanest causal estimate for **transit-corridor density**. It is also a template for turning a permit response into a change in stock. |
 
 ### Scenario 4: Parking reduction
 
