@@ -36,5 +36,9 @@ name = "housing-model"
 path = "src/bin/housing_model.rs"
 
 [[bin]]
+name = "housing-web"
+path = "src/bin/housing_web.rs"
+
+[[bin]]
 name = "housing-mcp"
 path = "src/bin/housing_mcp.rs"

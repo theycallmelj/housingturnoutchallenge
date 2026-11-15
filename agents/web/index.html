@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>State Housing Policy Lab</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1d2433; --muted: #5b6475; --line: #e3e6ec;
+    --accent: #2f5bd3; --accent-soft: #e7edfc; --range: #b9c8f3; --good: #1f7a4d; --good-soft: #e3f4ea;
+    --warn: #8a5a00; --warn-soft: #fff4dc;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--ink); color: #fff; padding: 20px 32px; }
+  header h1 { margin: 0; font-size: 22px; font-weight: 650; }
+  header p { margin: 4px 0 0; color: #c5cbd8; font-size: 14px; }
+  main { max-width: 1120px; margin: 0 auto; padding: 24px 32px 48px; display: grid; gap: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 24px; }
+  .card h2 { margin: 0 0 4px; font-size: 17px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+  .row { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  label { font-weight: 600; }
+  select, textarea, button { font: inherit; }
+  select { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; min-width: 220px; }
+  .big { font-size: 34px; font-weight: 700; letter-spacing: -0.5px; }
+  .muted { color: var(--muted); }
+  .bars { display: flex; gap: 6px; align-items: flex-end; height: 64px; }
+  .bars div { width: 34px; background: var(--range); border-radius: 4px 4px 0 0; position: relative; }
+  .bars span { position: absolute; bottom: -18px; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  tr.scenario { cursor: pointer; }
+  tr.scenario:hover { background: #fafbfd; }
+  .num { font-variant-numeric: tabular-nums; font-weight: 650; white-space: nowrap; }
+  .rangebar { position: relative; height: 10px; background: #f0f2f6; border-radius: 6px; min-width: 220px; }
+  .rangebar .span { position: absolute; top: 0; bottom: 0; background: var(--range); border-radius: 6px; }
+  .rangebar .mid { position: absolute; top: -3px; width: 3px; height: 16px; background: var(--accent); border-radius: 2px; }
+  .explain { display: none; }
+  .explain.open { display: table-row; }
+  .explain pre { white-space: pre-wrap; background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin: 0; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 340px; overflow: auto; }
+  .note { font-size: 13px; color: var(--muted); margin-top: 12px; }
+  textarea { width: 100%; min-height: 64px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 2px 10px; font-size: 12.5px; font-weight: 600; }
+  .status { font-size: 13px; color: var(--muted); }
+  .answer { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 6px; }
+  .answer h3 { font-size: 15px; margin: 16px 0 6px; }
+  .answer table td, .answer table th { padding: 6px 8px; font-size: 13.5px; }
+  .answer code { background: #f0f2f6; padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .check { border-radius: 8px; padding: 10px 14px; font-size: 13.5px; margin-top: 14px; }
+  .check.ok { background: var(--good-soft); color: var(--good); }
+  .check.flag { background: var(--warn-soft); color: var(--warn); }
+  details { margin-top: 12px; }
+  details pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Menlo, monospace; background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; }
+  footer { max-width: 1120px; margin: 0 auto; padding: 0 32px 32px; color: var(--muted); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>State Housing Policy Lab</h1>
+  <p>Statewide five-year effects of the five benchmark reforms, from Census data and sourced assumptions, explained by a panel of expert agents running on Apache-2.0 models.</p>
+</header>
+<main>
+  <section class="card">
+    <div class="row">
+      <div><label for="state">State</label><br><select id="state"></select></div>
+      <div>
+        <div class="muted">Five-year baseline (current rules)</div>
+        <div class="big" id="baseline">–</div>
+        <div class="muted" id="baseline-range"></div>
+      </div>
+      <div>
+        <div class="muted">Housing units permitted per year</div>
+        <div class="bars" id="permits"></div>
+      </div>
+    </div>
+    <p class="note">Baseline = average annual units permitted 2021-2025 × 5 (range: slowest and fastest year × 5). Source: Census Building Permits Survey and Population Estimates (public domain).</p>
+  </section>
+
+  <section class="card">
+    <h2>Scenario comparison</h2>
+    <p class="sub">Additional housing units authorized by permit over five years vs. the baseline. Bars show the low-high range; the blue mark is the central estimate. Click a scenario for its formula, sensitivity, assumptions and sources.</p>
+    <table>
+      <thead><tr><th>Scenario</th><th>Central</th><th>Range</th><th></th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
+      <tbody id="scenarios"></tbody>
+    </table>
+    <p class="note">Scenarios are estimated separately and shouldn't be added together: they overlap and interact. Assumptions are first-pass and editable in <code>agents/assumptions/scenarios.json</code>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Ask the expert panel</h2>
+    <p class="sub">A leader model routes your question to domain experts. Each expert can only use its own tools (evidence, state data, and the scenario model), and every figure in the answer is checked against what the tools returned.</p>
+    <textarea id="question">How many ADUs could a state law add?</textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="ask">Ask the panel</button>
+      <span class="status" id="ask-status"></span>
+    </div>
+    <div id="result"></div>
+  </section>
+</main>
+<footer>Evidence-anchored estimates, not forecasts. Permits are not completions. See MODEL.md for the method and its limits.</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Math.round(n).toLocaleString("en-US");
+// Model results show to the nearest 10, matching the model's own text.
+const fmt10 = (n) => (Math.round(n / 10) * 10).toLocaleString("en-US");
+const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// Minimal markdown: headings, bold, code, lists, tables. Text is escaped first.
+function md(src) {
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const lines = src.split("\n"); const out = []; let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+      const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const body = rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
+      out.push("<table>" + body.map((r, k) => "<tr>" + cells(r).map((c) => (k ? "<td>" : "<th>") + inline(c) + (k ? "</td>" : "</th>")).join("") + "</tr>").join("") + "</table>");
+      continue;
+    }
+    if (/^\s*([-*]|\d+\.)\s+/.test(l)) {
+      const items = [];
+      while (i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i])) items.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+      out.push("<ul>" + items.map((x) => "<li>" + inline(x) + "</li>").join("") + "</ul>");
+      continue;
+    }
+    const h = l.match(/^#{1,4}\s+(.*)/);
+    if (h) out.push("<h3>" + inline(h[1]) + "</h3>");
+    else if (l.trim() === "---") out.push("<hr>");
+    else if (l.trim()) out.push("<p>" + inline(l) + "</p>");
+    i++;
+  }
+  return out.join("");
+}
+
+async function loadStates() {
+  const states = await (await fetch("/api/states")).json();
+  $("state").innerHTML = states.map((s) => `<option value="${s.abbr}">${esc(s.name)}</option>`).join("");
+  $("state").value = new URLSearchParams(location.search).get("state") || "PA";
+  await loadCompare();
+}
+
+async function loadCompare() {
+  const d = await (await fetch("/api/compare?state=" + $("state").value)).json();
+  $("baseline").textContent = fmt(d.baseline.central) + " units";
+  $("baseline-range").textContent = "range " + fmt(d.baseline.low) + " to " + fmt(d.baseline.high);
+  const max = Math.max(...d.permits.map((p) => p.units));
+  $("permits").innerHTML = d.permits.map((p) => `<div style="height:${Math.max(6, 60 * p.units / max)}px" title="${p.year}: ${fmt(p.units)}"><span>${String(p.year).slice(2)}</span></div>`).join("");
+  const top = Math.max(...d.scenarios.map((s) => s.high));
+  $("scenarios").innerHTML = d.scenarios.map((s, k) => `
+    <tr class="scenario" data-k="${k}">
+      <td><strong>${esc(s.label.replace(/^Scenario \d: /, ""))}</strong></td>
+      <td class="num">${fmt10(s.central)}</td>
+      <td class="num muted">${fmt10(s.low)} – ${fmt10(s.high)}</td>
+      <td><div class="rangebar"><div class="span" style="left:${100 * s.low / top}%;width:${Math.max(0.5, 100 * (s.high - s.low) / top)}%"></div><div class="mid" style="left:${100 * s.central / top}%"></div></div></td>
+      <td class="num">${(100 * s.central / d.baseline.central).toFixed(1)}%</td>
+      <td class="muted" style="font-size:13px">${esc(s.top_sensitivity || "")}</td>
+    </tr>
+    <tr class="explain" id="explain-${k}"><td colspan="6"><pre>${esc(s.explanation)}</pre></td></tr>`).join("");
+  document.querySelectorAll("tr.scenario").forEach((tr) => tr.addEventListener("click", () => $("explain-" + tr.dataset.k).classList.toggle("open")));
+}
+
+async function ask() {
+  const btn = $("ask"); btn.disabled = true; $("result").innerHTML = "";
+  const t0 = Date.now();
+  const timer = setInterval(() => { $("ask-status").textContent = `Experts working… ${Math.round((Date.now() - t0) / 1000)}s`; }, 250);
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: $("question").value, state: $("state").value }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    const flags = d.citation_issues.length;
+    $("result").innerHTML = `
+      <div class="answer">
+        <div class="row" style="gap:10px;margin:10px 0"><span class="muted">Experts consulted:</span><span class="chips">${d.consulted.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</span></div>
+        <div class="muted" style="font-size:12.5px">Models: ${esc(d.models)}</div>
+        ${md(d.text.split("\n## Citation check (automatic)")[0])}
+        <div class="check ${flags ? "flag" : "ok"}">${flags ? `Citation check: ${flags} figure(s) could not be traced to a tool result.<br>` + d.citation_issues.map(esc).join("<br>") : "Citation check passed: every figure traces to the evidence base, the state data, or the scenario model."}</div>
+        <details><summary>Permission audit trail (${d.audit.length} decisions)</summary><pre>${d.audit.map(esc).join("\n")}</pre></details>
+      </div>`;
+    $("ask-status").textContent = `Answered in ${Math.round((Date.now() - t0) / 1000)}s`;
+  } catch (e) {
+    $("result").innerHTML = `<div class="check flag">${esc(String(e.message || e))}</div>`;
+    $("ask-status").textContent = "";
+  } finally { clearInterval(timer); btn.disabled = false; }
+}
+
+$("state").addEventListener("change", loadCompare);
+$("ask").addEventListener("click", ask);
+loadStates();
+</script>
+</body>
+</html>

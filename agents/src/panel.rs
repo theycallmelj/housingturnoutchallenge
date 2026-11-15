@@ -223,6 +223,24 @@ impl Tool for ConsultExpert {
         child.begin_activation(format!("{name}:{question}"), 1024 * 1024);
 
         let mut ctx = AgentContext::new(Arc::new(child));
+        // Run the scenario model deterministically for the expert's own
+        // scenario (or all five for the modeling expert), so every answer is
+        // anchored to it rather than depending on the model choosing to call it.
+        let model_result = crate::state::split_state(question).0.and_then(|s| {
+            let a = crate::engine::Assumptions::bundled();
+            match a.estimate(&self.domain, s) {
+                Ok(e) => Some(a.explain(&e, s)),
+                Err(_) if self.domain == "modeling" => Some(a.compare(s)),
+                Err(_) => None,
+            }
+        });
+        if let (Some(m), false) = (&model_result, self.plan.is_offline()) {
+            ctx.transcript.push(Message::user(format!(
+                "The team's scenario model has already been run for this state. Lead your answer with this \
+                 result, copying its figures exactly (central and range), then use the evidence to explain and \
+                 question it. Don't attribute anything to a study beyond what the evidence brief says.\n{m}"
+            )));
+        }
         ctx.transcript.push(Message::user(question.to_string()));
         let outcome = ReActLoop { max_steps: 6 }
             .run(self.agent.as_ref(), &mut ctx)
@@ -242,12 +260,13 @@ impl Tool for ConsultExpert {
             .await?;
         // Keep what the tools actually returned, so the citation check can
         // tell tool-sourced figures from figures the model introduced.
-        let tool_output: Vec<&str> = ctx
+        let mut tool_output: Vec<&str> = ctx
             .transcript
             .iter()
             .filter(|m| m.role == condesate::Role::Tool)
             .map(|m| m.content.as_str())
             .collect();
+        tool_output.extend(model_result.as_deref());
         ctx.services
             .storage_set(
                 &format!("findings/{}/tool_output", self.domain),

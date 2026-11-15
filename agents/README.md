@@ -23,6 +23,16 @@ Each domain has three tools: `evidence_brief`, `find_studies`, and `find_dataset
 
 `housing-model --state XX` runs the deterministic scenario model with no language model involved: the five benchmark reforms side by side, then each one explained (formula, sensitivity, assumptions with sources, gaps). The method is in [`MODEL.md`](../MODEL.md) and the assumptions are in [`assumptions/scenarios.json`](assumptions/scenarios.json). Scenario experts reach it through `<domain>.estimate` (within their own grant), the modeling expert through `modeling.compare_scenarios`, and MCP clients through `estimate_scenario` and `compare_scenarios`.
 
+## Web UI
+
+```bash
+cargo run --manifest-path agents/Cargo.toml --bin housing-web                  # offline models
+set -a; source agents/.env; set +a
+cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-web   # open models
+```
+
+Open <http://127.0.0.1:8787>. The page lets you pick a state, see its baseline and permit history, compare the five scenarios with range bars (click a scenario for its formula, sensitivity, assumptions, and sources), and ask the expert panel. Each answer shows the experts consulted, the models used, the citation check, and the permission audit trail. It's served by a small dependency-free HTTP server (`src/web.rs`) bound to localhost; the page has no external assets.
+
 ## Statewide answers
 
 The challenge wants **statewide** impacts against a **five-year current-rules baseline**, with direction, magnitude, uncertainty, drivers, and limits. Pass a state:
