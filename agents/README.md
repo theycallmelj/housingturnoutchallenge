@@ -50,10 +50,12 @@ cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- --state PA "How
 ```bash
 cargo run --manifest-path agents/Cargo.toml --bin housing-eval                     # offline: must be 100%
 cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-eval -- \
-  --min-pass-rate 0.5 --out eval-report.json --markdown eval-summary.md         # live models
+  --min-pass-rate 0.6 --out eval-report.json --markdown eval-summary.md         # live models
 ```
 
 In CI, the offline suite runs on every push and must pass 100%. The live suite (`.github/workflows/llm-evals.yml`) runs on demand, weekly, or on PRs labelled `llm-evals`, and must meet `MIN_PASS_RATE`. To add a case, append it to `cases.json`; a test checks that its state, domains, and ids exist.
+
+**Live baseline (2026-11-15, gpt-oss-120b leading gpt-oss-20b on OpenRouter):** 7 of 10 cases. `routed`, `grounded`, `figures_sourced` and `no_known_errors` were all 100%. The failures were the leader dropping study ids (two parking cases) and skipping the required sections on a data question. The first run, before the router hint and citation rules, scored 2 of 10.
 
 ## How the permissions work
 

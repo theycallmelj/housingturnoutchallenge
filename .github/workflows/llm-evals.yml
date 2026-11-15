@@ -13,7 +13,7 @@ on:
     inputs:
       min_pass_rate:
         description: Minimum share of cases that must pass (0-1)
-        default: "0.5"
+        default: "0.6"
       filter:
         description: Only run case ids containing this text (blank = all)
         default: ""
@@ -43,8 +43,8 @@ jobs:
       HOUSING_LLM_HOST: openrouter
       HOUSING_MODEL_PROFILE: ${{ inputs.profile || 'openrouter' }}
       # Model output varies run to run; offline evals (rust.yml) hold the
-      # strict 100% bar. Raise this as the prompts improve.
-      MIN_PASS_RATE: ${{ inputs.min_pass_rate || '0.5' }}
+      # strict 100% bar. Baseline on 2026-11-15: 7/10 (70%). Raise as prompts improve.
+      MIN_PASS_RATE: ${{ inputs.min_pass_rate || '0.6' }}
       FILTER: ${{ inputs.filter || '' }}
     steps:
       - name: Skip without an API key
