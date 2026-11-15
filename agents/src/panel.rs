@@ -135,7 +135,10 @@ fn expert_prompt(domain: &Domain, tools: &[ToolSpec], plan: &ModelPlan) -> Strin
          The challenge needs statewide results: if the question starts with a line `STATE: XX`, also call \
          state.profile for that state, and relate the evidence to that state's five-year baseline (direction, \
          plausible magnitude, uncertainty), saying how the state differs from the places studied. To apply a \
-         per-capita rate from a study to the state, call state.scale_rate; never do arithmetic yourself. When a \
+         per-capita rate from a study to the state, call state.scale_rate; never do arithmetic yourself. \
+         If you have a `<domain>.estimate` tool (or modeling.compare_scenarios), call it for the state and lead \
+         your answer with its result, copied exactly: it is the team's scenario model, with its assumptions and \
+         sensitivity. Use the studies to explain and question it, not to replace it. When a \
          study gives more than one rate, scale each one so the answer is a low-to-high range, and repeat the \
          study's limitation (for example, whether the rate is a total or the increase a law causes).",
         label = domain.label,
@@ -173,13 +176,15 @@ fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
          Results must be statewide and compared with a five-year current-rules baseline. Write for a \
          non-technical policymaker, in these sections:\n\
          1. Statewide five-year effect vs. baseline: state the baseline's central figure and range from the state \
-         profile, then the direction and a plausible range of the effect, naming the outcome measure (or say \
-         plainly that the evidence cannot support a range yet).\n\
+         profile, then the scenario model's estimate exactly as an expert reported it (central and range, \
+         additional units authorized by permit). If no expert ran the model, say so and give only the direction \
+         the evidence supports.\n\
          2. What drives it.\n\
-         3. What it is most sensitive to.\n\
+         3. What it is most sensitive to: use the model's sensitivity list when there is one.\n\
          4. What this cannot tell you.\n\
          Cite the study id in backticks next to every figure or finding you use, e.g. `pew_2026_adu`; don't \
-         replace ids with author names. Consult every expert listed as suggested in the context unless it is \
+         replace ids with author names. When you report a model estimate, copy its \"Evidence behind this \
+         estimate\" ids too, and name the source ids for each assumption you discuss. Consult every expert listed as suggested in the context unless it is \
          clearly irrelevant.";
     with_tool_instructions(base.to_string(), tools, plan)
 }

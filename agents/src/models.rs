@@ -116,6 +116,20 @@ impl ModelProvider for OfflineExpertModel {
                     name: "state.profile".into(),
                     args: json!({ "state": s.abbr }),
                 });
+                if crate::engine::Assumptions::bundled()
+                    .scenario(&self.domain)
+                    .is_some()
+                {
+                    calls.push(ToolCall {
+                        name: format!("{}.estimate", self.domain),
+                        args: json!({ "state": s.abbr }),
+                    });
+                } else if self.domain == "modeling" {
+                    calls.push(ToolCall {
+                        name: "modeling.compare_scenarios".into(),
+                        args: json!({ "state": s.abbr }),
+                    });
+                }
             }
             return Ok(CompletionResponse {
                 content: format!("Pulling the {} evidence brief.", self.domain),
@@ -128,7 +142,12 @@ impl ModelProvider for OfflineExpertModel {
             .find(|r| r.starts_with("DOMAIN "))
             .cloned()
             .unwrap_or_default();
-        let mut out = condense_brief(&brief, 4);
+        // The model's own estimate (or comparison) leads; the evidence follows.
+        let model = results
+            .iter()
+            .find(|r| r.starts_with("MODEL ESTIMATE") || r.starts_with("SCENARIO COMPARISON"));
+        let mut out = model.map(|m| format!("{m}\n\n")).unwrap_or_default();
+        out.push_str(&condense_brief(&brief, 4));
         if let Some(s) = state {
             out.push_str(&format!(
                 "\nApplying this to {}: these figures come from other places and periods. They show direction and plausible magnitude, not a statewide forecast; scale per-capita rates with the state profile's conversion line.",
@@ -227,6 +246,23 @@ impl ModelProvider for OfflineOrchestratorModel {
                 s.profile()
             )),
             None => out.push_str("\n(No state selected. The challenge asks for statewide results; pass a state to get its baseline.)\n"),
+        }
+        if state.is_some() {
+            // Headline: each expert's model result, before the evidence.
+            let headlines: Vec<&str> = answers
+                .iter()
+                .flat_map(|a| a.lines())
+                .filter(|l| {
+                    l.starts_with("MODEL ESTIMATE") || l.starts_with("Additional units authorized")
+                })
+                .collect();
+            out.push_str("\n## Statewide five-year effect vs. baseline\n");
+            if headlines.is_empty() {
+                out.push_str("This question doesn't map to one of the five benchmark scenarios, so the model gives no estimate; see the evidence below.\n");
+            } else {
+                out.push_str(&headlines.join("\n"));
+                out.push('\n');
+            }
         }
         for (d, a) in domains.iter().zip(answers.iter()) {
             out.push_str(&format!("\n## Evidence: {} ({})\n{a}\n", d.label, d.expert));

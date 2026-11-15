@@ -12,7 +12,8 @@ This repo has a structured evidence base: [`ontology/housing-ontology.json`](../
 1. **Route.** Call `mcp__housing-ontology__route_query` with the question to see which domains it touches.
 2. **Gather.** For each domain, load the matching skill below and call `mcp__housing-ontology__evidence_brief` with `{domain, query}`.
 3. **Or ask the whole panel.** `mcp__housing-ontology__ask_experts` runs the condesate orchestrator, which spawns one sandboxed expert per relevant domain. From a shell: `cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- "<question>"`.
-4. **Synthesize** under the rules below.
+4. **Get the numbers from the model, not from memory.** For a state and scenario, call `mcp__housing-ontology__estimate_scenario` (or `mcp__housing-ontology__compare_scenarios` for all five). It returns additional permitted units over five years vs. the baseline, with range, sensitivity, assumptions, and sources. Method: [`MODEL.md`](../../../MODEL.md).
+5. **Synthesize** under the rules below.
 
 | Domain id | Skill | Scenario |
 | --- | --- | --- |

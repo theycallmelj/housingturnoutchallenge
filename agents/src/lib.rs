@@ -6,9 +6,11 @@
 //! * `openai_compat` (feature `llm`) — provider for Ollama/vLLM/llama.cpp servers.
 //! * [`state`] — statewide permits, population and the five-year baseline.
 //! * [`panel`] — the orchestrator and one expert per domain, under condesate's kernel.
+//! * [`engine`] — the scenario model: statewide five-year effects from `assumptions/scenarios.json`.
 //! * [`evals`] — scored eval suite over the panel (offline in CI, live with a key).
 //! * [`mcp`] — a stdio MCP server exposing the same queries and the panel.
 
+pub mod engine;
 pub mod evals;
 pub mod mcp;
 pub mod models;

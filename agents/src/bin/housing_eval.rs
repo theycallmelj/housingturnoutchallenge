@@ -17,6 +17,7 @@ async fn main() -> anyhow::Result<()> {
     let mut markdown = None;
     let mut filter = None;
     let mut min_pass_rate = 1.0_f64;
+    let mut min_check_rate = 0.0_f64;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         let mut value = || {
@@ -29,8 +30,9 @@ async fn main() -> anyhow::Result<()> {
             "--markdown" => markdown = Some(value()?),
             "--filter" => filter = Some(value()?),
             "--min-pass-rate" => min_pass_rate = value()?.parse()?,
+            "--min-check-rate" => min_check_rate = value()?.parse()?,
             other => anyhow::bail!(
-                "unknown argument {other}\nusage: housing-eval [--cases path] [--filter id] [--min-pass-rate 0.0-1.0] [--out report.json] [--markdown summary.md]"
+                "unknown argument {other}\nusage: housing-eval [--cases path] [--filter id] [--min-pass-rate 0.0-1.0] [--min-check-rate 0.0-1.0] [--out report.json] [--markdown summary.md]"
             ),
         }
     }
@@ -47,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     );
     let report = evals::run(&panel, &suite, filter.as_deref()).await?;
 
-    let summary = report.markdown(min_pass_rate);
+    let summary = report.markdown(min_pass_rate, min_check_rate);
     println!("{summary}");
     if let Some(path) = out {
         std::fs::write(&path, serde_json::to_string_pretty(&report)?)?;
@@ -57,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
         std::fs::write(&path, &summary)?;
         eprintln!("wrote {path}");
     }
-    if report.pass_rate < min_pass_rate {
+    if !report.meets(min_pass_rate, min_check_rate) {
         std::process::exit(1);
     }
     Ok(())

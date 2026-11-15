@@ -7,7 +7,8 @@
       "state": "PA",
       "expect_domains": ["adu"],
       "cite_any": ["pew_2026_adu", "bhatt_2023", "marantz_elmendorf_kim_2023", "rose_institute_2024"],
-      "forbid": ["ADU-2024", "23 per 100 000", "23 per 100,000"]
+      "forbid": ["ADU-2024", "23 per 100 000", "23 per 100,000"],
+      "expect_estimate": "adu"
     },
     {
       "id": "missing-middle-wisconsin",
@@ -15,7 +16,8 @@
       "state": "WI",
       "expect_domains": ["missing_middle"],
       "cite_any": ["terner_sb9_2021", "greenaway_mcgrevy_2025_wp017", "greenaway_mcgrevy_phillips_2023", "stacy_2023", "maltman_greenaway_mcgrevy_2024"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "missing_middle"
     },
     {
       "id": "tod-massachusetts",
@@ -23,7 +25,8 @@
       "state": "MA",
       "expect_domains": ["tod"],
       "cite_any": ["anagol_ferreira_rexer_2026", "freemark_2019", "kestelman_2025", "su_curran_groome_freemark_2026"],
-      "forbid": ["1.9% housing stock", "+1.9% stock"]
+      "forbid": ["1.9% housing stock", "+1.9% stock"],
+      "expect_estimate": "tod"
     },
     {
       "id": "parking-minnesota",
@@ -31,7 +34,8 @@
       "state": "MN",
       "expect_domains": ["parking"],
       "cite_any": ["gabbe_pierce_clowers_2020", "li_guo_2014", "sohoni_lee_2024", "sohoni_lee_2026", "andersson_2016"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "parking"
     },
     {
       "id": "fees-california",
@@ -39,7 +43,8 @@
       "state": "CA",
       "expect_domains": ["fees"],
       "cite_any": ["cmhc_2026_dev_charges", "burge_ihlanfeldt_2006_sf", "burge_ihlanfeldt_2006_mf", "skidmore_peddle_1998", "reid_corsiglia_metcalf_2026"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "fees"
     },
     {
       "id": "data-delaware",
@@ -55,7 +60,8 @@
       "state": "NY",
       "expect_domains": ["parking", "tod"],
       "cite_any": ["gabbe_pierce_clowers_2020", "freemark_2019", "kestelman_2025", "anagol_ferreira_rexer_2026"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "parking"
     },
     {
       "id": "combining-scenarios-pennsylvania",
@@ -71,7 +77,8 @@
       "state": "TX",
       "expect_domains": ["fees"],
       "cite_any": ["cmhc_2026_dev_charges", "burge_ihlanfeldt_2006_sf", "skidmore_peddle_1998"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "fees"
     },
     {
       "id": "small-low-data-state-wyoming",
@@ -79,7 +86,8 @@
       "state": "WY",
       "expect_domains": ["adu"],
       "cite_any": ["pew_2026_adu", "bhatt_2023", "marantz_elmendorf_kim_2023", "chapple_2017"],
-      "forbid": []
+      "forbid": [],
+      "expect_estimate": "adu"
     }
   ]
 }

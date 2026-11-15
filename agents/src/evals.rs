@@ -20,6 +20,7 @@
 //! | `cites_evidence` | at least one expected study or dataset id appears |
 //! | `figures_sourced` | the citation check found no unsourced figures or unknown ids |
 //! | `no_known_errors` | none of the case's forbidden strings appear |
+//! | `model_estimate` | the scenario model's central estimate for the state appears (cases with `expect_estimate`) |
 
 use crate::panel::{numbers, Panel, PanelAnswer, UNGROUNDED_LABEL};
 use anyhow::{anyhow, Result};
@@ -42,6 +43,9 @@ pub struct Case {
     pub cite_any: Vec<String>,
     #[serde(default)]
     pub forbid: Vec<String>,
+    /// Scenario whose model estimate the answer must report, if any.
+    #[serde(default)]
+    pub expect_estimate: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,6 +72,8 @@ pub struct Report {
     pub passed: usize,
     pub total: usize,
     pub pass_rate: f64,
+    /// Share of all individual checks that passed, across every case.
+    pub check_rate: f64,
     pub check_pass_rates: Vec<(String, f64)>,
     pub results: Vec<CaseResult>,
 }
@@ -199,6 +205,25 @@ pub fn score(case: &Case, answer: &PanelAnswer) -> Vec<Check> {
         },
     });
 
+    if let (Some(sc), Some(s)) = (&case.expect_estimate, state) {
+        let (passed, detail) = match crate::engine::Assumptions::bundled().estimate(sc, s) {
+            Ok(e) => {
+                let central = crate::engine::round10(e.central);
+                let digits = central.replace(',', "");
+                (
+                    numbers(text).contains(&digits),
+                    format!("{sc} central estimate {central}"),
+                )
+            }
+            Err(err) => (false, err.to_string()),
+        };
+        checks.push(Check {
+            name: "model_estimate",
+            passed,
+            detail,
+        });
+    }
+
     checks
 }
 
@@ -276,6 +301,10 @@ pub async fn run(panel: &Panel, suite: &Suite, filter: Option<&str>) -> Result<R
         passed,
         total,
         pass_rate: passed as f64 / total as f64,
+        check_rate: {
+            let all: Vec<&Check> = results.iter().flat_map(|r| r.checks.iter()).collect();
+            all.iter().filter(|c| c.passed).count() as f64 / all.len().max(1) as f64
+        },
         check_pass_rates,
         results,
     })
@@ -283,18 +312,26 @@ pub async fn run(panel: &Panel, suite: &Suite, filter: Option<&str>) -> Result<R
 
 impl Report {
     /// Markdown summary for CI job summaries and PR review.
-    pub fn markdown(&self, min_pass_rate: f64) -> String {
-        let verdict = if self.pass_rate >= min_pass_rate {
+    /// Whether the run meets both thresholds.
+    pub fn meets(&self, min_pass_rate: f64, min_check_rate: f64) -> bool {
+        self.pass_rate >= min_pass_rate && self.check_rate >= min_check_rate
+    }
+
+    pub fn markdown(&self, min_pass_rate: f64, min_check_rate: f64) -> String {
+        let verdict = if self.meets(min_pass_rate, min_check_rate) {
             "PASS"
         } else {
             "FAIL"
         };
         let mut out = format!(
-            "## Panel evals: {verdict}\n\n{} of {} cases passed ({:.0}%; threshold {:.0}%).\n\nModels: {}\n\n",
+            "## Panel evals: {verdict}\n\n{} of {} cases passed every check ({:.0}%; threshold {:.0}%). \
+             {:.0}% of individual checks passed (threshold {:.0}%).\n\nModels: {}\n\n",
             self.passed,
             self.total,
             self.pass_rate * 100.0,
             min_pass_rate * 100.0,
+            self.check_rate * 100.0,
+            min_check_rate * 100.0,
             self.models
         );
         out.push_str("| Check | Pass rate |\n| --- | --- |\n");
@@ -363,6 +400,13 @@ mod tests {
             for d in &c.expect_domains {
                 assert!(o.domain(d).is_some(), "{}: domain {d}", c.id);
             }
+            if let Some(sc) = &c.expect_estimate {
+                assert!(
+                    crate::engine::Assumptions::bundled().scenario(sc).is_some(),
+                    "{}: scenario {sc}",
+                    c.id
+                );
+            }
             for id in &c.cite_any {
                 assert!(
                     o.study(id).is_some() || o.dataset(id).is_some(),
@@ -380,6 +424,13 @@ mod tests {
         let good = format!(
             "Five-year baseline {base}. pew_2026_adu: 81. What drives it: uptake. Most sensitive to the rate. This cannot tell you completions."
         );
+        let est = crate::engine::round10(
+            crate::engine::Assumptions::bundled()
+                .estimate("adu", s)
+                .unwrap()
+                .central,
+        );
+        let good = format!("{good} Model: {est} additional units.");
         assert!(score(&case(), &answer(&good, &["adu"], &[]))
             .iter()
             .all(|c| c.passed));
@@ -412,6 +463,10 @@ mod tests {
             failed(&format!("{good} about 23 per 100 000"), &["adu"], &[]),
             vec!["no_known_errors"]
         );
+        assert_eq!(
+            failed(&good.replace(&est, "many"), &["adu"], &[]),
+            vec!["model_estimate"]
+        );
         assert!(failed(&format!("{UNGROUNDED_LABEL}\n\n{good}"), &[], &[]).contains(&"grounded"));
     }
 
@@ -436,6 +491,8 @@ mod tests {
             })
             .collect();
         assert!(failures.is_empty(), "{failures:#?}");
-        assert!(report.markdown(1.0).contains("PASS"));
+        assert!((report.check_rate - 1.0).abs() < 1e-9);
+        assert!(report.meets(1.0, 1.0));
+        assert!(report.markdown(1.0, 1.0).contains("PASS"));
     }
 }

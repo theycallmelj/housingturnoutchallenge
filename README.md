@@ -11,6 +11,7 @@ Team repository for the [Housing Data and Technology Innovation Challenge](https
 - [`prototypes/`](prototypes/): UI and engine prototypes
 - [`research/`](research/README.md): literature index and data-source provenance
 - [`ontology/`](ontology/README.md): evidence ontology (77 studies, 41 datasets with license status)
+- [`MODEL.md`](MODEL.md): **the scenario model**: statewide five-year effects of the five benchmark reforms for any state, with ranges, sensitivity and sources (`housing-model --state XX`)
 - [`agents/`](agents/README.md): condesate expert panel (`housing-ask`) and MCP server (`housing-mcp`, registered in `.mcp.json`)
 - [`.claude/skills/`](.claude/skills/): one evidence skill per policy domain
 - [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md): AI tool use log

@@ -51,6 +51,19 @@ fn tool_list() -> Value {
             "inputSchema": {"type": "object", "properties": {"question": {"type": "string"}, "state": {"type": "string", "description": "USPS code or state name; the challenge asks for statewide results"}}, "required": ["question"]}
         },
         {
+            "name": "estimate_scenario",
+            "description": "Run the scenario model for one benchmark scenario in one state: additional housing units authorized over five years vs. the current-rules baseline (low/central/high), sensitivity, assumptions with sources, and known gaps. Deterministic; no language model involved.",
+            "inputSchema": {"type": "object", "properties": {
+                "state": {"type": "string"},
+                "scenario": {"type": "string", "enum": ["adu", "missing_middle", "tod", "parking", "fees"]}
+            }, "required": ["state", "scenario"]}
+        },
+        {
+            "name": "compare_scenarios",
+            "description": "All five benchmark scenarios side by side for one state: central and range of additional units over five years, share of the baseline, and each one's most influential assumption.",
+            "inputSchema": {"type": "object", "properties": {"state": {"type": "string"}}, "required": ["state"]}
+        },
+        {
             "name": "state_baseline",
             "description": "One state's population, housing units permitted per year 2021-2025 (Census BPS), and the five-year current-rules baseline with its low/high range.",
             "inputSchema": {"type": "object", "properties": {"state": {"type": "string"}}, "required": ["state"]}
@@ -131,6 +144,27 @@ fn call_tool(o: &Ontology, name: &str, args: &Value) -> Value {
                 false,
             )
         }
+        "estimate_scenario" => {
+            let model = crate::engine::Assumptions::bundled();
+            match (s("state").and_then(crate::state::find), s("scenario")) {
+                (Some(st), Some(sc)) => match model.estimate(sc, st) {
+                    Ok(e) => text_result(model.explain(&e, st), false),
+                    Err(e) => text_result(e.to_string(), true),
+                },
+                _ => text_result(
+                    "need a known state and a scenario (adu, missing_middle, tod, parking, fees)"
+                        .into(),
+                    true,
+                ),
+            }
+        }
+        "compare_scenarios" => match s("state").and_then(crate::state::find) {
+            Some(st) => text_result(crate::engine::Assumptions::bundled().compare(st), false),
+            None => text_result(
+                "unknown state; use a USPS code like CA or a full name".into(),
+                true,
+            ),
+        },
         "state_baseline" => match s("state").and_then(crate::state::find) {
             Some(st) => text_result(st.profile(), false),
             None => text_result(
@@ -312,6 +346,29 @@ mod tests {
             .unwrap();
         let text = r["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("Experts consulted: missing_middle"), "{text}");
+    }
+
+    #[test]
+    fn estimate_and_compare_tools_run_the_model() {
+        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 8, "method": "tools/call",
+            "params": {"name": "estimate_scenario", "arguments": {"state": "PA", "scenario": "fees"}}})).unwrap();
+        assert!(r["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("MODEL ESTIMATE"));
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 9, "method": "tools/call",
+            "params": {"name": "compare_scenarios", "arguments": {"state": "PA"}}}),
+        )
+        .unwrap();
+        assert!(r["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Transit-oriented density"));
+        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 10, "method": "tools/call",
+            "params": {"name": "estimate_scenario", "arguments": {"state": "PA", "scenario": "rent_control"}}})).unwrap();
+        assert_eq!(r["result"]["isError"], true);
     }
 
     #[test]

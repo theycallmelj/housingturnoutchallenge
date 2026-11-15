@@ -18,7 +18,7 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 
 /// The tools one domain expert may call.
 pub fn domain_tools(ontology: &'static Ontology, domain: &str) -> Vec<Arc<dyn Tool>> {
-    vec![
+    let mut tools: Vec<Arc<dyn Tool>> = vec![
         Arc::new(EvidenceBrief {
             ontology,
             domain: domain.to_string(),
@@ -34,7 +34,22 @@ pub fn domain_tools(ontology: &'static Ontology, domain: &str) -> Vec<Arc<dyn To
         Arc::new(GetEntity { ontology }),
         Arc::new(StateProfile),
         Arc::new(ScaleRate),
-    ]
+    ];
+    // Scenario experts can run the model for their own scenario only (the
+    // tool is named `<domain>.estimate`, inside their grant); the modeling
+    // expert can compare all five.
+    if crate::engine::Assumptions::bundled()
+        .scenario(domain)
+        .is_some()
+    {
+        tools.push(Arc::new(ScenarioEstimate {
+            scenario: domain.to_string(),
+        }));
+    }
+    if domain == "modeling" {
+        tools.push(Arc::new(CompareScenarios));
+    }
+    tools
 }
 
 /// `state.scale_rate`: apply a per-100,000-residents rate to a state, with
@@ -193,5 +208,49 @@ impl Tool for GetEntity {
         self.ontology
             .describe(id)
             .ok_or_else(|| anyhow!("no entity with id '{id}'"))
+    }
+}
+
+/// `<scenario>.estimate`: the scenario model's statewide five-year result
+/// for one state, with formula, sensitivity, assumptions and gaps.
+pub struct ScenarioEstimate {
+    pub scenario: String,
+}
+
+#[async_trait]
+impl Tool for ScenarioEstimate {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: format!("{}.estimate", self.scenario),
+            description: format!(
+                "Run the scenario model for the {} benchmark in {{state}}: additional units over five years vs. the baseline (low/central/high), what it is most sensitive to, the assumptions with sources, and known gaps.",
+                self.scenario
+            ),
+        }
+    }
+    async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
+        let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
+        let s = crate::state::find(q).ok_or_else(|| anyhow!("unknown state '{q}'"))?;
+        let a = crate::engine::Assumptions::bundled();
+        let e = a.estimate(&self.scenario, s)?;
+        Ok(a.explain(&e, s))
+    }
+}
+
+/// `modeling.compare_scenarios`: all five benchmark scenarios side by side.
+pub struct CompareScenarios;
+
+#[async_trait]
+impl Tool for CompareScenarios {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: "modeling.compare_scenarios".into(),
+            description: "Compare all five benchmark scenarios for {state}: central and range of additional units over five years, share of the baseline, and the most influential assumption for each.".into(),
+        }
+    }
+    async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
+        let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
+        let s = crate::state::find(q).ok_or_else(|| anyhow!("unknown state '{q}'"))?;
+        Ok(crate::engine::Assumptions::bundled().compare(s))
     }
 }

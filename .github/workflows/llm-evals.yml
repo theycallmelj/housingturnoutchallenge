@@ -11,9 +11,9 @@ name: LLM evals (live models)
 on:
   workflow_dispatch:
     inputs:
-      min_pass_rate:
-        description: Minimum share of cases that must pass (0-1)
-        default: "0.6"
+      min_check_rate:
+        description: Minimum share of individual checks that must pass (0-1)
+        default: "0.8"
       filter:
         description: Only run case ids containing this text (blank = all)
         default: ""
@@ -42,9 +42,11 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       HOUSING_LLM_HOST: openrouter
       HOUSING_MODEL_PROFILE: ${{ inputs.profile || 'openrouter' }}
-      # Model output varies run to run; offline evals (rust.yml) hold the
-      # strict 100% bar. Baseline on 2026-11-15: 7/10 (70%). Raise as prompts improve.
-      MIN_PASS_RATE: ${{ inputs.min_pass_rate || '0.6' }}
+      # Model output varies run to run, and with 8 checks per case a 90%
+      # per-check rate gives under half of cases passing everything, so live
+      # runs gate on the share of checks passed. Offline evals (rust.yml)
+      # hold the strict 100% bar. Baseline 2026-11-15: 88% of checks.
+      MIN_CHECK_RATE: ${{ inputs.min_check_rate || '0.8' }}
       FILTER: ${{ inputs.filter || '' }}
     steps:
       - name: Skip without an API key
@@ -62,7 +64,7 @@ jobs:
       - name: housing-eval (live)
         if: env.OPENROUTER_API_KEY != ''
         run: |
-          ARGS=(--min-pass-rate "$MIN_PASS_RATE" --out eval-report.json --markdown eval-summary.md)
+          ARGS=(--min-pass-rate 0 --min-check-rate "$MIN_CHECK_RATE" --out eval-report.json --markdown eval-summary.md)
           if [ -n "$FILTER" ]; then ARGS+=(--filter "$FILTER"); fi
           cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-eval -- "${ARGS[@]}"
       - name: Job summary

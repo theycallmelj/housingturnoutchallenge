@@ -21,6 +21,10 @@ eligible parcels ─► incremental legal capacity ─► financially feasible p
 4. **Implementation, uptake, timing** as separate parameters. Don't discount the same delay twice (memo).
 5. **Report** baseline and reform totals, the difference, annual timing, uncertainty, assumptions, sources, and data vintage.
 
+## The implemented model
+
+A first version of the pipeline above exists as a transparent, factor-based scenario model. Method: [`MODEL.md`](../../../MODEL.md). Code: `agents/src/engine.rs`. Every assumption, with its low/central/high values and sources, is in `agents/assumptions/scenarios.json`. Run `cargo run --manifest-path agents/Cargo.toml --bin housing-model -- --state XX`, or use `mcp__housing-ontology__compare_scenarios`. When improving it, change assumptions in the JSON first, and replace the transit-share placeholder and add parcel eligibility next.
+
 ## Interactions
 
 - `kulka_sood_chiumenti_2026`: model the **binding constraint**; don't multiply independent effects.
