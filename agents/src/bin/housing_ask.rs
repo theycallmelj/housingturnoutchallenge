@@ -27,6 +27,9 @@ async fn main() -> anyhow::Result<()> {
     let answer = Panel::from_env(Ontology::bundled())?.ask(&question).await?;
     println!("{}", answer.text);
     println!("\n(models: {}; experts consulted: {})", answer.models, answer.consulted.join(", "));
+    if !answer.citation_issues.is_empty() {
+        eprintln!("warning: {} citation issue(s); see the Citation check section", answer.citation_issues.len());
+    }
     if show_audit {
         println!("\n--- permission audit trail ---");
         for line in &answer.audit {

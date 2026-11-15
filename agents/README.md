@@ -54,7 +54,15 @@ The skills in [`.claude/skills/`](../.claude/skills/) tell agents how to use the
 | OpenRouter | `--features llm`, `HOUSING_LLM_HOST=openrouter`, and an API key | Hosted. No GPU or server to run. Recommended for demos and judging. |
 | Self-hosted | `--features llm` and `HOUSING_LLM_BASE_URL` | Your own OpenAI-compatible server: Ollama (default naming) or vLLM (`HOUSING_LLM_HOST=vllm`). |
 
-With either model backend, each agent calls its own model. Tool calls use condesate's `PromptedToolModel`, and `<think>` reasoning blocks are stripped.
+With either model backend, each agent calls its own model. Safeguards against unreliable model output:
+
+- **Native tool calling.** Tools are declared as OpenAI function tools, since gpt-oss and Qwen3 are trained to call them natively. A `TOOL_CALL: <name> <json>` text line still works as a fallback.
+- **No invented tool results.** Generation stops at `[TOOL RESULT]`, and only the first tool call in a reply is kept.
+- **Retries.** A host that fails mid-generation, or returns an empty answer, is retried up to 3 times, and OpenRouter is told to skip the hosts that failed.
+- **Grounding guards.** An expert that never called a tool returns "no grounded answer" instead of free text. If the leader never consults an expert, it's nudged once, and its answer is then labeled `UNGROUNDED`.
+- **Citation check.** Every model answer is checked against the ontology. Any study id that doesn't exist, or any figure on a citing line that isn't in that study's record, is listed under "Citation check (automatic)". `housing-ask` also warns on stderr.
+
+Set `HOUSING_LLM_DEBUG=1` to print each raw model response (host, finish reason, tool calls) to stderr.
 
 [`model-registry.json`](model-registry.json) is the allow-list. Every model in it is **Apache-2.0**, verified from its Hugging Face card. When the panel starts, `ModelPlan::resolve` checks these rules and refuses to run otherwise:
 

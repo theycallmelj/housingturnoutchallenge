@@ -117,7 +117,10 @@ fn expert_prompt(domain: &Domain, tools: &[ToolSpec], plan: &ModelPlan) -> Strin
          Always call {id}.evidence_brief with the question first, and answer only from tool results.\n\
          Rules: cite the study id for every figure, and state its outcome measure (permits, starts, stock, \
          feasible capacity, parking supply...) and evidence type. Never recommend a dataset marked NOT usable. \
-         Say plainly when the evidence cannot support a number for the benchmark scenario.",
+         If no study estimates the benchmark scenario directly, still report the closest comparison figures \
+         from the brief (study id, figure, outcome measure, setting) and explain why they are not a forecast \
+         for a state. Copy every figure and study id exactly as written in the tool results; never compute, \
+         round, or invent a number or id.",
         label = domain.label,
         desc = domain.description,
         id = domain.id,
@@ -131,7 +134,14 @@ fn with_tool_instructions(base: String, tools: &[ToolSpec], plan: &ModelPlan) ->
     if plan.is_offline() {
         base
     } else {
-        format!("{base}\n\n{}", condesate::tool_instructions(tools))
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        format!(
+            "{base}\n\nTools available: {}. Call them with your function-calling ability, one at a time. \
+             A message starting with [TOOL RESULT] is the result of your last call, not a new request. \
+             Never write a [TOOL RESULT] yourself. If you cannot call functions natively, write exactly one line \
+             `TOOL_CALL: <tool_name> <json_arguments>` and nothing else.",
+            names.join(", ")
+        )
     }
 }
 
@@ -139,8 +149,9 @@ fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
     let base = "You coordinate a panel of housing policy experts for a state policy simulation challenge \
          (five-year horizon; ADU, missing middle, transit-oriented density, parking and 50% fee-cut scenarios). \
          Consult every expert whose domain the question touches, then synthesize. Keep each expert's figures \
-         tied to their study ids and outcome measures. Never add effects across scenarios or outcome types; \
-         flag interactions and disagreements instead.";
+         tied to their study ids and outcome measures. Use only figures and study ids that appear in the experts' \
+         answers, copied exactly; never invent, compute, or round them. Never add effects across scenarios or \
+         outcome types; flag interactions and disagreements instead.";
     with_tool_instructions(base.to_string(), tools, plan)
 }
 
@@ -177,11 +188,38 @@ impl Tool for ConsultExpert {
         let mut ctx = AgentContext::new(Arc::new(child));
         ctx.transcript.push(Message::user(question.to_string()));
         let outcome = ReActLoop { max_steps: 4 }.run(self.agent.as_ref(), &mut ctx).await?;
+        // An expert that never called a tool is answering from memory.
+        let grounded = ctx.transcript.iter().any(|m| m.role == condesate::Role::Tool);
+        let answer = if grounded { outcome.final_text } else { EXPERT_UNGROUNDED.to_string() };
         ctx.services
-            .storage_set(&format!("findings/{}/answer", self.domain), &outcome.final_text)
+            .storage_set(&format!("findings/{}/answer", self.domain), &answer)
             .await?;
-        Ok(outcome.final_text)
+        Ok(answer)
     }
+}
+
+/// Prefixed to any answer produced without consulting an expert.
+pub const UNGROUNDED_LABEL: &str =
+    "UNGROUNDED: no expert was consulted, so this answer is not based on the evidence base. Do not use its figures.";
+
+const UNGROUNDED_NUDGE: &str = "You have not consulted any expert yet. Do not answer from memory. \
+     Call the consult tool for the relevant domain now, using one TOOL_CALL line and nothing else.";
+
+/// Returned instead of an expert's text when it never called a tool.
+pub const EXPERT_UNGROUNDED: &str =
+    "The expert did not consult the evidence base, so it has no grounded answer. Treat this domain as unanswered.";
+
+/// Domains whose experts recorded findings in this activation.
+async fn consulted_domains(services: &GuardedServices) -> Result<Vec<String>> {
+    let mut consulted: Vec<String> = services
+        .storage_keys("findings/")
+        .await?
+        .into_iter()
+        .filter_map(|k| k.split('/').nth(1).map(str::to_string))
+        .collect();
+    consulted.sort();
+    consulted.dedup();
+    Ok(consulted)
 }
 
 /// The answer to one question, with the trail of what produced it.
@@ -193,6 +231,78 @@ pub struct PanelAnswer {
     pub audit: Vec<String>,
     /// Which models answered.
     pub models: String,
+    /// Citations or figures in a model answer that the ontology doesn't support.
+    pub citation_issues: Vec<String>,
+}
+
+/// Snake_case tokens that look like study ids, e.g. `pew_2026_adu`.
+fn id_like_tokens(line: &str) -> Vec<&str> {
+    line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .map(|t| t.trim_matches('_'))
+        .filter(|t| t.contains('_') && t.chars().next().is_some_and(|c| c.is_ascii_lowercase()))
+        .collect()
+}
+
+/// Numbers in a line, normalized (`100 000` and `100,000` become `100000`).
+fn numbers(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let chars: Vec<char> = line.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        let joins = matches!(c, ',' | ' ' | '\u{202f}' | '\u{a0}' | '.')
+            && !cur.is_empty()
+            && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit());
+        if c.is_ascii_digit() {
+            cur.push(c);
+        } else if joins {
+            if c == '.' {
+                cur.push('.');
+            }
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Study ids the answer cites that aren't in the ontology, and figures on a
+/// line citing a study that don't appear anywhere in that study's record.
+pub fn check_citations(ontology: &Ontology, text: &str) -> Vec<String> {
+    let mut issues = Vec::new();
+    for line in text.lines() {
+        let mut cited = Vec::new();
+        for tok in id_like_tokens(line) {
+            if let Some(s) = ontology.study(tok) {
+                cited.push(s);
+            } else if tok.chars().any(|c| c.is_ascii_digit()) && ontology.dataset(tok).is_none() {
+                let issue = format!("`{tok}` is not a study in the evidence base");
+                if !issues.contains(&issue) {
+                    issues.push(issue);
+                }
+            }
+        }
+        if cited.is_empty() {
+            continue;
+        }
+        let record: String = cited
+            .iter()
+            .map(|s| format!("{} {} {} {} {} {}", s.id, s.title, s.venue, s.finding, s.limitation, s.relevance))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let known: Vec<String> = numbers(&record);
+        let ids: Vec<&str> = cited.iter().map(|s| s.id.as_str()).collect();
+        for n in numbers(line) {
+            let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
+            if is_year || ids.iter().any(|id| id.contains(&n)) || known.contains(&n) {
+                continue;
+            }
+            issues.push(format!("figure {n} next to {} does not appear in that study's record", ids.join(", ")));
+        }
+    }
+    issues
 }
 
 pub struct Panel {
@@ -266,18 +376,35 @@ impl Panel {
 
         let mut ctx = AgentContext::new(services.clone());
         ctx.transcript.push(Message::user(question.to_string()));
-        let outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
+        let mut outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
 
-        let mut consulted: Vec<String> = services
-            .storage_keys("findings/")
-            .await?
-            .into_iter()
-            .filter_map(|k| k.split('/').nth(1).map(str::to_string))
-            .collect();
-        consulted.sort();
-        consulted.dedup();
+        // A leader that answers without consulting anyone is answering from
+        // memory, not from the evidence base. Nudge once, then label it.
+        let mut consulted = consulted_domains(&services).await?;
+        if consulted.is_empty() && !self.plan.is_offline() {
+            ctx.transcript.push(Message::user(UNGROUNDED_NUDGE.to_string()));
+            outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
+            consulted = consulted_domains(&services).await?;
+        }
+        let text = if consulted.is_empty() && !self.plan.is_offline() {
+            format!("{UNGROUNDED_LABEL}\n\n{}", outcome.final_text)
+        } else {
+            outcome.final_text
+        };
+        // Model answers are checked against the ontology; offline answers
+        // are verbatim tool output and need no check.
+        let citation_issues = if self.plan.is_offline() { Vec::new() } else { check_citations(self.ontology, &text) };
+        let text = if citation_issues.is_empty() {
+            text
+        } else {
+            format!(
+                "{text}\n\n## Citation check (automatic)\nThe following could not be verified against the evidence base. \
+                 Treat them as errors:\n{}",
+                citation_issues.iter().map(|i| format!("- {i}")).collect::<Vec<_>>().join("\n")
+            )
+        };
         let audit = audit.events().await.iter().map(|e| e.summarize()).collect();
-        Ok(PanelAnswer { text: outcome.final_text, consulted, audit, models: self.plan.describe() })
+        Ok(PanelAnswer { text, consulted, audit, models: self.plan.describe(), citation_issues })
     }
 }
 
@@ -311,6 +438,26 @@ mod tests {
 
     fn panel() -> Panel {
         Panel::offline(Ontology::bundled())
+    }
+
+    #[test]
+    fn citation_check_flags_invented_ids_and_figures() {
+        let o = Ontology::bundled();
+        // From a real gpt-oss-120b answer: one correct row, three invented ones.
+        let answer = "| **pew_2026_adu** | permits | **81 ADU permits per 100 000 residents** (2025) |\n\
+                      | **rose_2024_adu** | +12 % annual growth |\n\
+                      | **marantz_elmendorf_kim_2023** | 4 % of total housing stock |\n\
+                      The terner_sb9_2021 study found about 700,000 feasible units on 5.4% of parcels.";
+        let issues = check_citations(o, answer);
+        assert!(issues.iter().any(|i| i.contains("`rose_2024_adu` is not a study")), "{issues:#?}");
+        assert!(issues.iter().any(|i| i.contains("figure 4 next to marantz_elmendorf_kim_2023")), "{issues:#?}");
+        assert!(!issues.iter().any(|i| i.contains("pew_2026_adu")), "correct figures pass: {issues:#?}");
+        assert!(!issues.iter().any(|i| i.contains("terner_sb9_2021")), "correct figures pass: {issues:#?}");
+    }
+
+    #[test]
+    fn numbers_are_normalized() {
+        assert_eq!(numbers("81 per 100 000, 5.4% and 700,000"), vec!["81", "100000", "5.4", "700000"]);
     }
 
     #[tokio::test]

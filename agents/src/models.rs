@@ -412,8 +412,7 @@ impl ModelPlan {
             Backend::Offline => Ok(offline),
             #[cfg(feature = "llm")]
             Backend::OpenAiCompat { base_url, api_key, .. } => {
-                let inner = Arc::new(crate::openai_compat::OpenAiCompatModel::new(base_url, self.served_id(spec), api_key.clone()));
-                Ok(Arc::new(condesate::PromptedToolModel::new(inner)))
+                Ok(Arc::new(crate::openai_compat::OpenAiCompatModel::new(base_url, self.served_id(spec), api_key.clone())))
             }
             #[cfg(not(feature = "llm"))]
             Backend::OpenAiCompat { .. } => {
