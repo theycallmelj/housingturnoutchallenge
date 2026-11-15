@@ -85,6 +85,25 @@ jobs:
             eval-summary.md
           if-no-files-found: ignore
 
+  sbom:
+    name: SBOM matches Cargo.lock
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agents
+          cache-bin: true
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --version 0.5.9 --locked
+      - name: Compare committed SBOM with a fresh one
+        working-directory: agents
+        run: |
+          cargo cyclonedx -f json --all-features --spec-version 1.5 --override-filename fresh-sbom
+          python3 ../scripts/sbom_diff.py sbom.cdx.json fresh-sbom.json
+
   state-data:
     name: state baseline data is reproducible
     runs-on: ubuntu-latest

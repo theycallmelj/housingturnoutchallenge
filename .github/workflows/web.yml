@@ -38,3 +38,7 @@ jobs:
         run: pnpm test
       - name: Typecheck + production build
         run: pnpm build
+      - name: SBOM matches the lockfile
+        run: |
+          FETCH_LICENSE=false npx --yes @cyclonedx/cdxgen@12.9.0 -t pnpm --spec-version 1.5 --no-recurse -o "$RUNNER_TEMP/sbom.cdx.json" .
+          python3 ../../scripts/sbom_diff.py sbom.cdx.json "$RUNNER_TEMP/sbom.cdx.json"

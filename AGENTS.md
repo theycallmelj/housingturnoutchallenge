@@ -31,6 +31,9 @@ The handbook defines an SBOM as "an inventory of a project's software dependenci
 # Node / pnpm projects (run inside the project folder)
 npx --yes @cyclonedx/cyclonedx-npm --output-format JSON --output-file sbom.cdx.json
 
+# pnpm projects (cyclonedx-npm can't read pnpm lockfiles; cdxgen is Apache-2.0)
+npx --yes @cyclonedx/cdxgen@12.9.0 -t pnpm --spec-version 1.5 --no-recurse -o sbom.cdx.json .
+
 # Python projects
 pipx run cyclonedx-bom -r -i requirements.txt -o sbom.cdx.json   # or: cyclonedx-py environment
 
@@ -41,7 +44,7 @@ cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx
 syft dir:. -o cyclonedx-json=sbom.cdx.json
 ```
 
-If you cannot run the generator, say so in your summary. Do not claim the SBOM is current.
+If you cannot run the generator, say so in your summary. Do not claim the SBOM is current. CI checks it: `scripts/sbom_diff.py` fails the build when a committed SBOM's packages don't match a freshly generated one.
 
 ---
 
