@@ -151,11 +151,47 @@ pub const STANDING_LIMITS: &str = "\
 - Permits are not completions; some permitted units are never built, and the rest take a year or more.
 - Local implementation of state law varies, so statewide totals can differ from what a uniform rollout would imply.";
 
+/// What every panel answer lists as the inputs results are most sensitive to.
+pub const STANDING_SENSITIVITIES: &str = "\
+- Which comparison rate or take-up assumption is borrowed from the studies above; compare their low and high anchors.
+- Whether the reform actually binds: places whose current rules already allow the change gain little.
+- Market strength: rents and prices relative to construction, land and financing costs.
+- Local implementation and approval speed after a state law passes.
+- The baseline pace itself (see its low to high range).";
+
 /// Deterministic orchestrator: route the question with the ontology's
 /// domain keywords, consult each matching expert in one step, then stitch
 /// their answers together in the structure the challenge asks for.
 pub struct OfflineOrchestratorModel {
     pub ontology: &'static Ontology,
+}
+
+impl OfflineOrchestratorModel {
+    /// The causal mechanisms the ontology lists for the routed domains' scenarios.
+    fn drivers(&self, domains: &[&crate::ontology::Domain]) -> String {
+        let mut seen = Vec::new();
+        let mut out = String::new();
+        for sc in self
+            .ontology
+            .scenarios
+            .iter()
+            .filter(|sc| domains.iter().any(|d| d.scenarios.contains(&sc.id)))
+        {
+            for m in &sc.key_mechanisms {
+                if seen.contains(m) {
+                    continue;
+                }
+                seen.push(m.clone());
+                if let Some(mech) = self.ontology.mechanisms.iter().find(|x| &x.id == m) {
+                    out.push_str(&format!("- {}: {}\n", mech.label, mech.description));
+                }
+            }
+        }
+        if out.is_empty() {
+            out.push_str("- See the mechanisms in each evidence section above.\n");
+        }
+        out
+    }
 }
 
 #[async_trait]
@@ -198,6 +234,10 @@ impl ModelProvider for OfflineOrchestratorModel {
         if domains.len() > 1 {
             out.push_str("\n## Combining these\nThe experts' estimates use different outcome measures and settings. Don't add them together; policy effects interact (see the modeling domain, e.g. kulka_sood_chiumenti_2026).\n");
         }
+        out.push_str(&format!("\n## What drives it\n{}", self.drivers(&domains)));
+        out.push_str(&format!(
+            "\n## What it is most sensitive to\n{STANDING_SENSITIVITIES}\n"
+        ));
         out.push_str(&format!(
             "\n## What this cannot tell you\n{STANDING_LIMITS}\n"
         ));

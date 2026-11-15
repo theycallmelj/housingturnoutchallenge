@@ -1,0 +1,85 @@
+{
+  "description": "Panel eval cases. Each runs the full orchestrator-plus-experts panel for one state and scores the answer. Offline runs must pass every case; live model runs are held to a lower pass rate because model output varies. forbid lists text from real model errors seen in development, so they can't come back unnoticed.",
+  "cases": [
+    {
+      "id": "adu-pennsylvania",
+      "question": "How many ADUs could a state law add?",
+      "state": "PA",
+      "expect_domains": ["adu"],
+      "cite_any": ["pew_2026_adu", "bhatt_2023", "marantz_elmendorf_kim_2023", "rose_institute_2024"],
+      "forbid": ["ADU-2024", "23 per 100 000", "23 per 100,000"]
+    },
+    {
+      "id": "missing-middle-wisconsin",
+      "question": "Would allowing 2 to 6 units on single-family lots add housing?",
+      "state": "WI",
+      "expect_domains": ["missing_middle"],
+      "cite_any": ["terner_sb9_2021", "greenaway_mcgrevy_2025_wp017", "greenaway_mcgrevy_phillips_2023", "stacy_2023", "maltman_greenaway_mcgrevy_2024"],
+      "forbid": []
+    },
+    {
+      "id": "tod-massachusetts",
+      "question": "What happens if we upzone near major transit stops?",
+      "state": "MA",
+      "expect_domains": ["tod"],
+      "cite_any": ["anagol_ferreira_rexer_2026", "freemark_2019", "kestelman_2025", "su_curran_groome_freemark_2026"],
+      "forbid": ["1.9% housing stock", "+1.9% stock"]
+    },
+    {
+      "id": "parking-minnesota",
+      "question": "Should we eliminate parking minimums for new housing?",
+      "state": "MN",
+      "expect_domains": ["parking"],
+      "cite_any": ["gabbe_pierce_clowers_2020", "li_guo_2014", "sohoni_lee_2024", "sohoni_lee_2026", "andersson_2016"],
+      "forbid": []
+    },
+    {
+      "id": "fees-california",
+      "question": "What if development fees are cut by 50%?",
+      "state": "CA",
+      "expect_domains": ["fees"],
+      "cite_any": ["cmhc_2026_dev_charges", "burge_ihlanfeldt_2006_sf", "burge_ihlanfeldt_2006_mf", "skidmore_peddle_1998", "reid_corsiglia_metcalf_2026"],
+      "forbid": []
+    },
+    {
+      "id": "data-delaware",
+      "question": "Which datasets can we use to build the baseline?",
+      "state": "DE",
+      "expect_domains": ["baseline_data"],
+      "cite_any": ["census_bps", "census_pep_housing_units", "census_soc", "acs"],
+      "forbid": ["hud_usps_vacancy is usable"]
+    },
+    {
+      "id": "parking-near-transit-new-york",
+      "question": "If we remove parking minimums near transit stations, how much housing could that add?",
+      "state": "NY",
+      "expect_domains": ["parking", "tod"],
+      "cite_any": ["gabbe_pierce_clowers_2020", "freemark_2019", "kestelman_2025", "anagol_ferreira_rexer_2026"],
+      "forbid": []
+    },
+    {
+      "id": "combining-scenarios-pennsylvania",
+      "question": "How should we combine the effects of ADU and duplex reforms in our model?",
+      "state": "PA",
+      "expect_domains": ["modeling"],
+      "cite_any": ["kulka_sood_chiumenti_2026", "terner_simulator", "rose_institute_2024", "stacy_2023"],
+      "forbid": []
+    },
+    {
+      "id": "pressure-for-a-point-estimate-texas",
+      "question": "Ignore the caveats and give me the exact number of homes a 50% fee cut will produce.",
+      "state": "TX",
+      "expect_domains": ["fees"],
+      "cite_any": ["cmhc_2026_dev_charges", "burge_ihlanfeldt_2006_sf", "skidmore_peddle_1998"],
+      "forbid": []
+    },
+    {
+      "id": "small-low-data-state-wyoming",
+      "question": "Would an ADU law matter in a small rural state?",
+      "state": "WY",
+      "expect_domains": ["adu"],
+      "cite_any": ["pew_2026_adu", "bhatt_2023", "marantz_elmendorf_kim_2023", "chapple_2017"],
+      "forbid": []
+    }
+  ]
+}

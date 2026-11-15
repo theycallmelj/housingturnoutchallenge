@@ -172,11 +172,15 @@ fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
          experts unchanged, including its `STATE:` line.\n\
          Results must be statewide and compared with a five-year current-rules baseline. Write for a \
          non-technical policymaker, in these sections:\n\
-         1. Statewide five-year effect vs. baseline: direction and a plausible range, naming the outcome measure \
-         (or say plainly that the evidence cannot support a range yet).\n\
+         1. Statewide five-year effect vs. baseline: state the baseline's central figure and range from the state \
+         profile, then the direction and a plausible range of the effect, naming the outcome measure (or say \
+         plainly that the evidence cannot support a range yet).\n\
          2. What drives it.\n\
          3. What it is most sensitive to.\n\
-         4. What this cannot tell you.";
+         4. What this cannot tell you.\n\
+         Cite the study id in backticks next to every figure or finding you use, e.g. `pew_2026_adu`; don't \
+         replace ids with author names. Consult every expert listed as suggested in the context unless it is \
+         clearly irrelevant.";
     with_tool_instructions(base.to_string(), tools, plan)
 }
 
@@ -306,7 +310,7 @@ fn id_like_tokens(line: &str) -> Vec<&str> {
 }
 
 /// Numbers in a line, normalized (`100 000` and `100,000` become `100000`).
-fn numbers(line: &str) -> Vec<String> {
+pub fn numbers(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     let chars: Vec<char> = line.chars().collect();
@@ -386,7 +390,10 @@ pub fn check_citations(ontology: &Ontology, text: &str, allowed: &[String]) -> V
         let ids: Vec<&str> = cited.iter().map(|s| s.id.as_str()).collect();
         for n in numbers(line) {
             let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
+            // Rate denominators ("per 100,000") aren't claims.
+            let denominator = matches!(n.as_str(), "100" | "1000" | "100000");
             if is_year
+                || denominator
                 || ids.iter().any(|id| id.contains(&n))
                 || known.contains(&n)
                 || allowed.contains(&n)
@@ -521,6 +528,20 @@ impl Panel {
             ctx.transcript.push(Message::user(format!(
                 "Context for this question:\n{}",
                 s.profile()
+            )));
+        }
+        if !self.plan.is_offline() {
+            // The keyword router is deterministic and checkable; give the
+            // leader its suggestion rather than relying on recall alone.
+            let suggested: Vec<String> = self
+                .ontology
+                .route(question)
+                .iter()
+                .map(|d| format!("consult.{} ({})", d.id, d.label))
+                .collect();
+            ctx.transcript.push(Message::user(format!(
+                "Suggested experts for this question (keyword router): {}.",
+                suggested.join(", ")
             )));
         }
         ctx.transcript.push(Message::user(message));

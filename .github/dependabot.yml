@@ -1,0 +1,22 @@
+# Eligibility gate (Official Rules 7d): Dependabot enabled.
+# Any dependency PR must keep the SBOM current (AGENTS.md section 1).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /agents
+    schedule:
+      interval: weekly
+    groups:
+      rust-minor:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /prototypes/state-housing-policy-lab
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

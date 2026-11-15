@@ -218,8 +218,8 @@ impl Ontology {
         let mut hits: Vec<(u32, &Study)> = self
             .studies
             .iter()
-            .filter(|s| domain.map_or(true, |d| s.domains.iter().any(|x| x == d)))
-            .filter(|s| scenario.map_or(true, |sc| s.scenarios.iter().any(|x| x == sc)))
+            .filter(|s| domain.is_none_or(|d| s.domains.iter().any(|x| x == d)))
+            .filter(|s| scenario.is_none_or(|sc| s.scenarios.iter().any(|x| x == sc)))
             .map(|s| {
                 let text = format!("{} {} {} {}", s.title, s.finding, s.relevance, s.authors);
                 let overlap = tokens(&text).iter().filter(|t| q.contains(*t)).count() as u32;
@@ -243,8 +243,8 @@ impl Ontology {
     ) -> Vec<&Dataset> {
         self.datasets
             .iter()
-            .filter(|d| domain.map_or(true, |x| d.domains.iter().any(|y| y == x)))
-            .filter(|d| scenario.map_or(true, |x| d.scenarios.iter().any(|y| y == x)))
+            .filter(|d| domain.is_none_or(|x| d.domains.iter().any(|y| y == x)))
+            .filter(|d| scenario.is_none_or(|x| d.scenarios.iter().any(|y| y == x)))
             .filter(|d| !usable_only || d.usable())
             .collect()
     }

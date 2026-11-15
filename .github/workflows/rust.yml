@@ -1,0 +1,100 @@
+name: Rust (agents)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  MANIFEST: agents/Cargo.toml
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agents
+      - name: rustfmt
+        run: cargo fmt --manifest-path $MANIFEST --check
+      - name: clippy (default features)
+        run: cargo clippy --manifest-path $MANIFEST --all-targets -- -D warnings
+      - name: clippy (llm feature)
+        run: cargo clippy --manifest-path $MANIFEST --all-targets --features llm -- -D warnings
+
+  test:
+    name: tests (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [default, llm]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agents
+          key: ${{ matrix.features }}
+      - name: cargo test
+        run: |
+          if [ "${{ matrix.features }}" = "llm" ]; then FEATURES="--features llm"; fi
+          cargo test --manifest-path $MANIFEST $FEATURES
+
+  offline-evals:
+    name: panel evals (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agents
+      # Deterministic models, so every case must pass: guards routing,
+      # required sections, state baselines and expected citations.
+      - name: housing-eval
+        run: >
+          cargo run --manifest-path $MANIFEST --bin housing-eval --
+          --min-pass-rate 1.0 --out eval-report.json --markdown eval-summary.md
+      - name: Job summary
+        if: always()
+        run: test -f eval-summary.md && cat eval-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: offline-eval-report
+          path: |
+            eval-report.json
+            eval-summary.md
+          if-no-files-found: ignore
+
+  state-data:
+    name: state baseline data is reproducible
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      # Re-fetch the Census files and confirm the committed derived table
+      # matches what the script produces (Official Rules: automated data
+      # acquisition, reproducible results).
+      - name: Rebuild data/derived/state_baseline.csv
+        run: python3 scripts/fetch_state_baseline.py
+      - name: Committed table matches
+        run: git diff --exit-code -- data/derived/state_baseline.csv

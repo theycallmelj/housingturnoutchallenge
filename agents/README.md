@@ -33,6 +33,28 @@ cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- --state PA "How
 - **Answer structure:** (1) statewide five-year effect vs. baseline, as a range; (2) drivers; (3) sensitivities; (4) what this cannot tell you.
 - **Revision pass:** if the citation check finds figures no tool produced, the leader gets the list once and rewrites. The cleaner version is kept, and anything still unsourced stays flagged.
 
+## Evals
+
+`housing-eval` runs the full panel on the questions in [`evals/cases.json`](evals/cases.json), one per scenario plus cross-domain, data, adversarial, and low-data-state cases. Each answer is scored on seven checks:
+
+| Check | Passes when |
+| --- | --- |
+| `routed` | every expected domain's expert was consulted |
+| `grounded` | the answer isn't labeled UNGROUNDED |
+| `sections` | it covers baseline, drivers, sensitivity, and limits (the rules' four required elements) |
+| `state_baseline` | the state's five-year central baseline figure appears |
+| `cites_evidence` | at least one expected study or dataset id appears |
+| `figures_sourced` | the citation check found no unsourced figures or unknown ids |
+| `no_known_errors` | none of the case's `forbid` strings (text from real past model errors) appear |
+
+```bash
+cargo run --manifest-path agents/Cargo.toml --bin housing-eval                     # offline: must be 100%
+cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-eval -- \
+  --min-pass-rate 0.5 --out eval-report.json --markdown eval-summary.md         # live models
+```
+
+In CI, the offline suite runs on every push and must pass 100%. The live suite (`.github/workflows/llm-evals.yml`) runs on demand, weekly, or on PRs labelled `llm-evals`, and must meet `MIN_PASS_RATE`. To add a case, append it to `cases.json`; a test checks that its state, domains, and ids exist.
+
 ## How the permissions work
 
 - The orchestrator is admitted with a spawn grant for `expert.*`. Each `consult.<domain>` tool spawns its expert through `GuardedServices::spawn_child`, so the expert's authority is **attenuated** from the orchestrator's.

@@ -96,7 +96,8 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 
 ## Definition of done (checklist for every PR)
 
-- [ ] Tests pass and new core logic has tests
+- [ ] Tests pass and new core logic has tests (CI runs them: `.github/workflows/`)
+- [ ] Changes to prompts, routing, models, or the ontology keep the offline evals at 100% (`housing-eval`); add an eval case for any new failure mode you fix
 - [ ] SBOM regenerated if dependencies changed
 - [ ] Provenance file added/updated for any new or changed dataset or cleaning step
 - [ ] `AI_DISCLOSURE.md` row added for material AI assistance

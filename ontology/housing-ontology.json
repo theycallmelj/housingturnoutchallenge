@@ -99,7 +99,7 @@
       "expert": "missing-middle-expert",
       "scenarios": ["missing_middle"],
       "description": "Duplex-to-sixplex legalization on single-family lots, lot splits (SB 9), feasibility vs. uptake, broad upzoning comparisons.",
-      "keywords": ["missing middle", "duplex", "triplex", "fourplex", "sixplex", "plex", "lot split", "sb 9", "sb9", "single-family zoning", "upzoning", "upzone", "density"]
+      "keywords": ["missing middle", "middle housing", "gentle density", "duplex", "triplex", "fourplex", "sixplex", "multiplex", "plex", "townhouse", "lot split", "sb 9", "sb9", "single-family", "2 to 6", "2-6", "two to six", "upzoning", "upzone", "density"]
     },
     {
       "id": "tod",

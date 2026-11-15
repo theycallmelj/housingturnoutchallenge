@@ -28,5 +28,9 @@ name = "housing-ask"
 path = "src/bin/housing_ask.rs"
 
 [[bin]]
+name = "housing-eval"
+path = "src/bin/housing_eval.rs"
+
+[[bin]]
 name = "housing-mcp"
 path = "src/bin/housing_mcp.rs"
