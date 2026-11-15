@@ -51,38 +51,53 @@ The skills in [`.claude/skills/`](../.claude/skills/) tell agents how to use the
 | Backend | When | Behavior |
 | --- | --- | --- |
 | Offline (default) | Always available | Deterministic. The orchestrator routes by ontology keywords; each expert pulls its evidence brief and condenses it. It answers only from tool results, needs no network, and is fully reproducible. |
-| Open models | Built with `--features llm` **and** `HOUSING_LLM_BASE_URL` set | Each agent calls its own model on any OpenAI-compatible server (Ollama, vLLM, llama.cpp). Tool calls use condesate's `PromptedToolModel`. `<think>` reasoning blocks are stripped. |
+| OpenRouter | `--features llm`, `HOUSING_LLM_HOST=openrouter`, and an API key | Hosted. No GPU or server to run. Recommended for demos and judging. |
+| Self-hosted | `--features llm` and `HOUSING_LLM_BASE_URL` | Your own OpenAI-compatible server: Ollama (default naming) or vLLM (`HOUSING_LLM_HOST=vllm`). |
 
-[`model-registry.json`](model-registry.json) is the allow-list. Every model in it is **Apache-2.0**, verified from its Hugging Face card. When the panel starts, `ModelPlan::resolve` checks two rules and refuses to run otherwise:
+With either model backend, each agent calls its own model. Tool calls use condesate's `PromptedToolModel`, and `<think>` reasoning blocks are stripped.
+
+[`model-registry.json`](model-registry.json) is the allow-list. Every model in it is **Apache-2.0**, verified from its Hugging Face card. When the panel starts, `ModelPlan::resolve` checks these rules and refuses to run otherwise:
 
 1. Every configured model is in the registry with license Apache-2.0. Llama, Gemma, and Claude are listed as rejected, with the reason.
 2. The **leader (orchestrator) outranks every expert** by `capability_rank`. The rank orders models by size and generation; it isn't a benchmark score.
+3. Every chosen model is **served by the chosen host**. Each host names models its own way: Ollama `qwen3:32b`, vLLM `Qwen/Qwen3-32B`, OpenRouter `qwen/qwen3-32b`. OpenRouter also requires a key.
 
-| Profile | Leader | Experts | Hardware |
+| Profile | Leader | Experts | Where |
 | --- | --- | --- | --- |
-| `laptop` (default) | `qwen3-4b` | `qwen3-1.7b` | 8 GB Apple Silicon |
+| `openrouter` (default when the host is OpenRouter) | `gpt-oss-120b` | `gpt-oss-20b` | OpenRouter: $0.15 / $0.60 and $0.03 / $0.13 per 1M tokens (in / out) on 2026-11-15 |
+| `laptop` (default otherwise) | `qwen3-4b` | `qwen3-1.7b` | 8 GB Apple Silicon with Ollama |
 | `workstation` | `qwen3-32b` | `qwen3-8b` | 32 GB+ or a 24 GB GPU |
 | `server` | `gpt-oss-120b` | `gpt-oss-20b` | 80 GB GPU for the leader |
 
-```bash
-# 1. Serve the models (Ollama shown; vLLM or llama-server also work)
-ollama pull qwen3:4b && ollama pull qwen3:1.7b
+### OpenRouter (hosted)
 
-# 2. Ask the panel
+```bash
+cp agents/.env.example agents/.env      # then put your key in agents/.env (gitignored)
+set -a; source agents/.env; set +a
+cargo run --features llm --manifest-path agents/Cargo.toml --bin housing-ask -- --audit "How many ADUs could a state law add?"
+```
+
+Buy paid credits rather than relying on `:free` models: free models are capped at 20 requests a minute and 50 a day, and one panel question makes several calls. OpenRouter adds a 5.5% fee when you buy credits; token prices are the hosts' list prices. The question and the ontology excerpts are sent to OpenRouter and its upstream hosts, so never put secrets or personal data in a question.
+
+### Self-hosted (Ollama shown)
+
+```bash
+ollama pull qwen3:4b && ollama pull qwen3:1.7b
 export HOUSING_LLM_BASE_URL=http://localhost:11434/v1
 cargo run --features llm --manifest-path agents/Cargo.toml --bin housing-ask -- --audit "..."
 ```
 
 | Variable | Effect |
 | --- | --- |
-| `HOUSING_LLM_BASE_URL` | OpenAI-compatible base URL. Unset means offline. |
-| `HOUSING_LLM_API_KEY` | Optional bearer token for a hosted server |
-| `HOUSING_MODEL_PROFILE` | `laptop`, `workstation`, or `server` |
+| `HOUSING_LLM_HOST` | `ollama` (default), `vllm`, or `openrouter` |
+| `HOUSING_LLM_BASE_URL` | OpenAI-compatible base URL. Defaults to `https://openrouter.ai/api/v1` for OpenRouter. Unset on other hosts means offline. |
+| `HOUSING_LLM_API_KEY` (or `OPENROUTER_API_KEY`) | Bearer token. Required for OpenRouter; optional for self-hosted. |
+| `HOUSING_MODEL_PROFILE` | `openrouter`, `laptop`, `workstation`, or `server` |
 | `HOUSING_LEADER_MODEL` | Registry id overriding the leader |
 | `HOUSING_EXPERT_MODEL` | Registry id overriding every expert |
-| `HOUSING_EXPERT_MODEL_<DOMAIN>` | Per-expert override, e.g. `HOUSING_EXPERT_MODEL_ADU=granite-3.3-8b` |
+| `HOUSING_EXPERT_MODEL_<DOMAIN>` | Per-expert override, e.g. `HOUSING_EXPERT_MODEL_ADU=qwen3-14b` |
 
-Each agent's manifest records the model it runs (e.g. `qwen3:32b` for the orchestrator, `granite3.3:8b` for the ADU expert), so the `--audit` trail shows which model made each call. The MCP server reads the same variables; add them under `env` in `.mcp.json` to use open models there.
+Each agent's manifest records the host and the model it runs (e.g. `openrouter` / `openai/gpt-oss-120b` for the orchestrator), so the `--audit` trail shows which model made each call. The MCP server reads the same variables; add them under `env` in `.mcp.json` to use open models there.
 
 ## SBOM
 

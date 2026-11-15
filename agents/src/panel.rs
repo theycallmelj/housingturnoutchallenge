@@ -291,12 +291,12 @@ mod tests {
 
     #[test]
     fn manifests_record_each_agents_own_model() {
-        use crate::models::{Backend, Registry};
+        use crate::models::{Backend, Host, Registry};
         use std::collections::BTreeMap;
         let per = BTreeMap::from([("adu".to_string(), "granite-3.3-8b".to_string())]);
         let plan = ModelPlan::resolve(
             Registry::bundled(),
-            Backend::OpenAiCompat { base_url: "http://localhost:11434/v1".into(), api_key: None },
+            Backend::OpenAiCompat { host: Host::Ollama, base_url: "http://localhost:11434/v1".into(), api_key: None },
             Some("workstation"),
             None,
             None,

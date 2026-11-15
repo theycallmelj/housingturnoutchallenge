@@ -4,9 +4,9 @@
 //!
 //! * **Offline** (default): deterministic models that answer only from tool
 //!   results, so the panel runs and is tested without network access.
-//! * **Open models** (`llm` feature + `HOUSING_LLM_BASE_URL`): any
-//!   OpenAI-compatible server (Ollama, vLLM, llama.cpp) serving models from
-//!   `model-registry.json`. Only Apache-2.0 models may be configured, and the
+//! * **Open models** (`llm` feature): OpenRouter (`HOUSING_LLM_HOST=openrouter`)
+//!   or any OpenAI-compatible server you run (Ollama, vLLM, llama.cpp; set
+//!   `HOUSING_LLM_BASE_URL`), serving models from `model-registry.json`. Only Apache-2.0 models may be configured, and the
 //!   leader must outrank every expert; [`ModelPlan::resolve`] refuses
 //!   anything else.
 
@@ -21,10 +21,15 @@ use std::sync::Arc;
 
 const REGISTRY: &str = include_str!("../model-registry.json");
 
+/// Where the models are served: `ollama` (default), `vllm` or `openrouter`.
+pub const HOST_ENV: &str = "HOUSING_LLM_HOST";
 /// OpenAI-compatible endpoint, e.g. `http://localhost:11434/v1` for Ollama.
+/// Optional for OpenRouter, which has a fixed default.
 pub const BASE_URL_ENV: &str = "HOUSING_LLM_BASE_URL";
-/// Optional bearer token for hosted endpoints.
+/// Bearer token. Optional for local servers; required for OpenRouter.
 pub const API_KEY_ENV: &str = "HOUSING_LLM_API_KEY";
+/// Fallback key variable for OpenRouter, matching its own docs.
+pub const OPENROUTER_KEY_ENV: &str = "OPENROUTER_API_KEY";
 /// Profile from the registry: `laptop`, `workstation` or `server`.
 pub const PROFILE_ENV: &str = "HOUSING_MODEL_PROFILE";
 /// Registry id overriding the profile's leader.
@@ -183,6 +188,9 @@ pub struct ModelSpec {
     pub params_b: f64,
     pub download_gb: f64,
     pub capability_rank: u32,
+    /// The model's id on OpenRouter, if OpenRouter lists it.
+    #[serde(default)]
+    pub openrouter_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,23 +224,89 @@ impl Registry {
     }
 }
 
+/// Who serves the models. Each host names the same model differently.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Host {
+    /// Ollama, or any server using Ollama tags (`qwen3:4b`).
+    Ollama,
+    /// vLLM, or any server using Hugging Face repo names (`Qwen/Qwen3-4B`).
+    Vllm,
+    /// OpenRouter (`openai/gpt-oss-120b`).
+    OpenRouter,
+}
+
+impl Host {
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.trim().to_lowercase().as_str() {
+            "" | "ollama" => Ok(Host::Ollama),
+            "vllm" | "hf" | "huggingface" => Ok(Host::Vllm),
+            "openrouter" => Ok(Host::OpenRouter),
+            other => bail!("unknown {HOST_ENV} '{other}'; expected ollama, vllm or openrouter"),
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Host::Ollama => "ollama",
+            Host::Vllm => "vllm",
+            Host::OpenRouter => "openrouter",
+        }
+    }
+
+    /// Hosted services have a fixed URL; self-hosted servers must be named.
+    pub fn default_base_url(self) -> Option<&'static str> {
+        match self {
+            Host::OpenRouter => Some("https://openrouter.ai/api/v1"),
+            Host::Ollama | Host::Vllm => None,
+        }
+    }
+
+    /// The profile used when none is chosen.
+    pub fn default_profile(self) -> Option<&'static str> {
+        match self {
+            Host::OpenRouter => Some("openrouter"),
+            Host::Ollama | Host::Vllm => None,
+        }
+    }
+
+    /// This host's name for a registry model, if it serves it.
+    pub fn model_id(self, spec: &ModelSpec) -> Option<&str> {
+        match self {
+            Host::Ollama => Some(spec.ollama_tag.as_str()),
+            Host::Vllm => Some(spec.hf_repo.as_str()),
+            Host::OpenRouter => spec.openrouter_id.as_deref(),
+        }
+    }
+}
+
 /// Where model calls go.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Backend {
     Offline,
     /// An OpenAI-compatible chat completions server. Needs the `llm` feature.
-    OpenAiCompat { base_url: String, api_key: Option<String> },
+    OpenAiCompat { host: Host, base_url: String, api_key: Option<String> },
 }
 
 impl Backend {
-    /// `OpenAiCompat` when `HOUSING_LLM_BASE_URL` is set, else `Offline`.
-    pub fn from_env() -> Self {
-        match std::env::var(BASE_URL_ENV) {
-            Ok(base_url) if !base_url.trim().is_empty() => Backend::OpenAiCompat {
-                base_url: base_url.trim().trim_end_matches('/').to_string(),
-                api_key: std::env::var(API_KEY_ENV).ok().filter(|k| !k.is_empty()),
-            },
-            _ => Backend::Offline,
+    /// `OpenAiCompat` when a base URL is set or the host has a default one
+    /// (OpenRouter); otherwise `Offline`.
+    pub fn from_env() -> Result<Self> {
+        let var = |k: &str| std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let host = Host::parse(&var(HOST_ENV).unwrap_or_default())?;
+        let Some(base_url) = var(BASE_URL_ENV).or_else(|| host.default_base_url().map(str::to_string)) else {
+            return Ok(Backend::Offline);
+        };
+        let mut api_key = var(API_KEY_ENV);
+        if host == Host::OpenRouter {
+            api_key = api_key.or_else(|| var(OPENROUTER_KEY_ENV));
+        }
+        Ok(Backend::OpenAiCompat { host, base_url: base_url.trim_end_matches('/').to_string(), api_key })
+    }
+
+    pub fn host(&self) -> Option<Host> {
+        match self {
+            Backend::Offline => None,
+            Backend::OpenAiCompat { host, .. } => Some(*host),
         }
     }
 }
@@ -258,11 +332,30 @@ impl ModelPlan {
         per_domain: &BTreeMap<String, String>,
         domains: &[&str],
     ) -> Result<Self> {
-        let profile_name = profile.unwrap_or(&registry.default_profile).to_string();
+        let host = backend.host();
+        if let Backend::OpenAiCompat { host: Host::OpenRouter, api_key: None, .. } = &backend {
+            bail!("OpenRouter needs an API key: set {API_KEY_ENV} or {OPENROUTER_KEY_ENV}");
+        }
+        let profile_name = profile
+            .or_else(|| host.and_then(Host::default_profile))
+            .unwrap_or(&registry.default_profile)
+            .to_string();
         let p = registry.profiles.get(&profile_name).ok_or_else(|| {
             anyhow!("unknown model profile '{profile_name}'; expected one of: {}", registry.profiles.keys().cloned().collect::<Vec<_>>().join(", "))
         })?;
+        let served = |m: &ModelSpec| -> Result<()> {
+            match host {
+                Some(h) if h.model_id(m).is_none() => bail!(
+                    "model '{}' is not available on {} (no {}_id in agents/model-registry.json); choose another model or host",
+                    m.id,
+                    h.name(),
+                    h.name()
+                ),
+                _ => Ok(()),
+            }
+        };
         let leader = registry.allowed(leader.unwrap_or(&p.leader))?.clone();
+        served(&leader)?;
         let default_expert = expert.unwrap_or(&p.expert);
         for d in per_domain.keys() {
             if !domains.contains(&d.as_str()) {
@@ -273,6 +366,7 @@ impl ModelPlan {
         for d in domains {
             let id = per_domain.get(*d).map(String::as_str).unwrap_or(default_expert);
             let m = registry.allowed(id)?.clone();
+            served(&m)?;
             if m.capability_rank >= leader.capability_rank {
                 bail!(
                     "leader '{}' (rank {}) must be stronger than the {d} expert '{}' (rank {}); pick a larger leader or a smaller expert",
@@ -293,7 +387,7 @@ impl ModelPlan {
             .collect();
         Self::resolve(
             Registry::bundled(),
-            Backend::from_env(),
+            Backend::from_env()?,
             var(PROFILE_ENV).as_deref(),
             var(LEADER_ENV).as_deref(),
             var(EXPERT_ENV).as_deref(),
@@ -308,12 +402,17 @@ impl ModelPlan {
             .expect("default profile must be valid")
     }
 
+    /// The name the configured host uses for `spec` (the registry id offline).
+    pub fn served_id<'a>(&self, spec: &'a ModelSpec) -> &'a str {
+        self.backend.host().and_then(|h| h.model_id(spec)).unwrap_or(&spec.id)
+    }
+
     fn provider(&self, spec: &ModelSpec, offline: Arc<dyn ModelProvider>) -> Result<Arc<dyn ModelProvider>> {
         match &self.backend {
             Backend::Offline => Ok(offline),
             #[cfg(feature = "llm")]
-            Backend::OpenAiCompat { base_url, api_key } => {
-                let inner = Arc::new(crate::openai_compat::OpenAiCompatModel::new(base_url, &spec.ollama_tag, api_key.clone()));
+            Backend::OpenAiCompat { base_url, api_key, .. } => {
+                let inner = Arc::new(crate::openai_compat::OpenAiCompatModel::new(base_url, self.served_id(spec), api_key.clone()));
                 Ok(Arc::new(condesate::PromptedToolModel::new(inner)))
             }
             #[cfg(not(feature = "llm"))]
@@ -338,7 +437,7 @@ impl ModelPlan {
         let spec = domain.and_then(|d| self.experts.get(d)).unwrap_or(&self.leader);
         let (provider, family, revision) = match self.backend {
             Backend::Offline => ("offline".to_string(), "deterministic".to_string(), env!("CARGO_PKG_VERSION").to_string()),
-            Backend::OpenAiCompat { .. } => ("openai-compat".to_string(), spec.family.clone(), spec.ollama_tag.clone()),
+            Backend::OpenAiCompat { host, .. } => (host.name().to_string(), spec.family.clone(), self.served_id(spec).to_string()),
         };
         ModelClass { provider, family, revision, embedding_space: None, quantization: None }
     }
@@ -351,7 +450,8 @@ impl ModelPlan {
         if self.is_offline() {
             return format!("offline deterministic models (set {BASE_URL_ENV} to use the '{}' open-model profile)", self.profile);
         }
-        let mut out = format!("profile {}: leader {} ({}, {})", self.profile, self.leader.id, self.leader.ollama_tag, self.leader.license);
+        let host = self.backend.host().map_or("offline", Host::name);
+        let mut out = format!("{host} profile {}: leader {} ({}, {})", self.profile, self.leader.id, self.served_id(&self.leader), self.leader.license);
         for (d, m) in &self.experts {
             out.push_str(&format!("; {d} {}", m.id));
         }
@@ -405,6 +505,44 @@ mod tests {
         let err = resolve(Some("qwen3-8b"), Some("qwen3-8b"), &[]).unwrap_err().to_string();
         assert!(err.contains("must be stronger"), "{err}");
         assert!(resolve(Some("qwen3-4b"), Some("qwen3-1.7b"), &[("fees", "qwen3-14b")]).is_err());
+    }
+
+    fn openrouter(key: Option<&str>) -> Backend {
+        Backend::OpenAiCompat {
+            host: Host::OpenRouter,
+            base_url: "https://openrouter.ai/api/v1".into(),
+            api_key: key.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn openrouter_defaults_to_its_profile_and_uses_openrouter_ids() {
+        let plan = ModelPlan::resolve(Registry::bundled(), openrouter(Some("k")), None, None, None, &BTreeMap::new(), DOMAINS).unwrap();
+        assert_eq!(plan.profile, "openrouter");
+        assert_eq!(plan.served_id(&plan.leader), "openai/gpt-oss-120b");
+        assert_eq!(plan.served_id(&plan.experts["adu"]), "openai/gpt-oss-20b");
+        assert_eq!(plan.model_class(Some("adu")).provider, "openrouter");
+    }
+
+    #[test]
+    fn openrouter_refuses_models_it_does_not_serve_and_missing_keys() {
+        let err = ModelPlan::resolve(Registry::bundled(), openrouter(Some("k")), Some("laptop"), None, None, &BTreeMap::new(), DOMAINS)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not available on openrouter"), "{err}");
+        let err = ModelPlan::resolve(Registry::bundled(), openrouter(None), None, None, None, &BTreeMap::new(), DOMAINS)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("API key"), "{err}");
+    }
+
+    #[test]
+    fn each_host_names_models_its_own_way() {
+        let spec = Registry::bundled().allowed("qwen3-32b").unwrap();
+        assert_eq!(Host::Ollama.model_id(spec), Some("qwen3:32b"));
+        assert_eq!(Host::Vllm.model_id(spec), Some("Qwen/Qwen3-32B"));
+        assert_eq!(Host::OpenRouter.model_id(spec), Some("qwen/qwen3-32b"));
+        assert!(Host::parse("bedrock").is_err());
     }
 
     #[test]
