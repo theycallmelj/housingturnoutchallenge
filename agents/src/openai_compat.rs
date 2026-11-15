@@ -64,9 +64,15 @@ fn tool_parameters(description: &str) -> Value {
         if arg.is_empty() || !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || props.contains_key(arg) {
             continue;
         }
-        let kind = if arg.starts_with("usable") { "boolean" } else { "string" };
+        let kind = if arg.starts_with("usable") {
+            "boolean"
+        } else if arg.starts_with("rate") {
+            "number"
+        } else {
+            "string"
+        };
         props.insert(arg.to_string(), json!({ "type": kind }));
-        if matches!(arg, "question" | "query" | "id") {
+        if matches!(arg, "question" | "query" | "id" | "state" | "rate_per_100k") {
             required.push(arg.to_string());
         }
     }

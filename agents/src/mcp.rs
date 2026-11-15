@@ -47,8 +47,13 @@ fn tool_list() -> Value {
         },
         {
             "name": "ask_experts",
-            "description": "Ask the full expert panel: the orchestrator routes the question to the relevant domain experts (each limited to its own tools), then returns their combined answer and which experts were consulted.",
-            "inputSchema": {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
+            "description": "Ask the full expert panel for one state: the orchestrator routes the question to the relevant domain experts (each limited to its own tools), then returns a statewide answer against the five-year baseline and which experts were consulted.",
+            "inputSchema": {"type": "object", "properties": {"question": {"type": "string"}, "state": {"type": "string", "description": "USPS code or state name; the challenge asks for statewide results"}}, "required": ["question"]}
+        },
+        {
+            "name": "state_baseline",
+            "description": "One state's population, housing units permitted per year 2021-2025 (Census BPS), and the five-year current-rules baseline with its low/high range.",
+            "inputSchema": {"type": "object", "properties": {"state": {"type": "string"}}, "required": ["state"]}
         },
         {
             "name": "get_entity",
@@ -89,6 +94,10 @@ fn call_tool(o: &Ontology, name: &str, args: &Value) -> Value {
             let ds = o.find_datasets(s("domain"), s("scenario"), usable_only);
             text_result(ds.into_iter().map(|d| o.format_dataset(d)).collect::<Vec<_>>().join("\n"), false)
         }
+        "state_baseline" => match s("state").and_then(crate::state::find) {
+            Some(st) => text_result(st.profile(), false),
+            None => text_result("unknown state; use a USPS code like CA or a full name".into(), true),
+        },
         "get_entity" => match s("id").and_then(|id| o.describe(id)) {
             Some(t) => text_result(t, false),
             None => text_result("no entity with that id".into(), true),
@@ -142,7 +151,8 @@ pub async fn handle_with_panel(o: &Ontology, panel: &Panel, msg: &Value) -> Opti
     }
     let id = msg.get("id").cloned()?;
     let question = msg.pointer("/params/arguments/question").and_then(Value::as_str).unwrap_or("");
-    let result = match panel.ask(question).await {
+    let state = msg.pointer("/params/arguments/state").and_then(Value::as_str);
+    let result = match panel.ask_for_state(question, state).await {
         Ok(a) => text_result(format!("{}\n\nExperts consulted: {}\nModels: {}", a.text, a.consulted.join(", "), a.models), false),
         Err(e) => text_result(format!("panel error: {e}"), true),
     };
@@ -225,6 +235,13 @@ mod tests {
             .unwrap();
         let text = r["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("Experts consulted: missing_middle"), "{text}");
+    }
+
+    #[test]
+    fn state_baseline_tool_returns_the_profile() {
+        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": "state_baseline", "arguments": {"state": "Wisconsin"}}})).unwrap();
+        assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("Wisconsin (WI)"));
     }
 
     #[test]

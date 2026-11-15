@@ -8,7 +8,8 @@ When a source is actually used, fill in its **version/vintage**, **access date**
 
 | Source | File | Main use | License | Flag |
 | --- | --- | --- | --- | --- |
-| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | ADUs reported inconsistently |
+| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | **In use** (2021-2025 state files); ADUs reported inconsistently |
+| Census Population Estimates (state totals) | [census-population-estimates.md](census-population-estimates.md) | Per-capita scaling, state profile | Public domain | **In use**; one year applied to the whole horizon |
 | Census PEP Housing Unit Estimates | [census-housing-unit-estimates.md](census-housing-unit-estimates.md) | Baseline stock | Public domain | Built from permits, so not independent |
 | Census Survey of Construction | [census-survey-of-construction.md](census-survey-of-construction.md) | Permit→completion lags | Public domain | Region-level only |
 | American Community Survey | [acs.md](acs.md) | Housing characteristics, eligible single-family stock, vacancy | Public domain | Margins of error |

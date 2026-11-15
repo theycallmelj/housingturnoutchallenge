@@ -23,7 +23,55 @@ pub fn domain_tools(ontology: &'static Ontology, domain: &str) -> Vec<Arc<dyn To
         Arc::new(FindStudies { ontology, domain: domain.to_string() }),
         Arc::new(FindDatasets { ontology, domain: domain.to_string() }),
         Arc::new(GetEntity { ontology }),
+        Arc::new(StateProfile),
+        Arc::new(ScaleRate),
     ]
+}
+
+/// `state.scale_rate`: apply a per-100,000-residents rate to a state, with
+/// the arithmetic shown, so models never do the conversion themselves.
+pub struct ScaleRate;
+
+#[async_trait]
+impl Tool for ScaleRate {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: "state.scale_rate".into(),
+            description: "Convert a rate of {rate_per_100k} units per 100,000 residents per year into statewide units per year and over five years for {state}, with the arithmetic shown.".into(),
+        }
+    }
+    async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
+        let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
+        let s = crate::state::find(q).ok_or_else(|| anyhow!("unknown state '{q}'"))?;
+        let rate = match args.get("rate_per_100k") {
+            Some(Value::Number(n)) => n.as_f64(),
+            Some(Value::String(v)) => v.trim().replace(',', "").parse().ok(),
+            _ => None,
+        }
+        .filter(|r: &f64| r.is_finite() && *r >= 0.0)
+        .ok_or_else(|| anyhow!("rate_per_100k must be a non-negative number"))?;
+        Ok(crate::state::scale_rate(s, rate))
+    }
+}
+
+/// `state.profile`: population, recent permits and the five-year
+/// current-rules baseline for one state. Shared by every expert.
+pub struct StateProfile;
+
+#[async_trait]
+impl Tool for StateProfile {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec {
+            name: "state.profile".into(),
+            description: "Statewide population, housing units permitted per year 2021-2025, and the five-year current-rules baseline for {state} (USPS code or name).".into(),
+        }
+    }
+    async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
+        let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
+        crate::state::find(q)
+            .map(|s| s.profile())
+            .ok_or_else(|| anyhow!("unknown state '{q}'; use a USPS code like CA or a full name"))
+    }
 }
 
 /// The domain's scope, best-ranked studies, usable datasets and caveats.

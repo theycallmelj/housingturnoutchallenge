@@ -92,6 +92,12 @@ pub fn expert_manifest(domain: &str, plan: &ModelPlan) -> AgentManifest {
                 ResourcePattern::Tool(Pattern::parse("ontology.get")),
             ),
             Rule::allow(
+                "state-data",
+                SubjectMatch::agent(&name),
+                &[Action::Invoke],
+                ResourcePattern::Tool(Pattern::parse("state.*")),
+            ),
+            Rule::allow(
                 "own-findings",
                 SubjectMatch::agent(&name),
                 &[Action::Read, Action::Write],
@@ -120,7 +126,13 @@ fn expert_prompt(domain: &Domain, tools: &[ToolSpec], plan: &ModelPlan) -> Strin
          If no study estimates the benchmark scenario directly, still report the closest comparison figures \
          from the brief (study id, figure, outcome measure, setting) and explain why they are not a forecast \
          for a state. Copy every figure and study id exactly as written in the tool results; never compute, \
-         round, or invent a number or id.",
+         round, or invent a number or id.\n\
+         The challenge needs statewide results: if the question starts with a line `STATE: XX`, also call \
+         state.profile for that state, and relate the evidence to that state's five-year baseline (direction, \
+         plausible magnitude, uncertainty), saying how the state differs from the places studied. To apply a \
+         per-capita rate from a study to the state, call state.scale_rate; never do arithmetic yourself. When a \
+         study gives more than one rate, scale each one so the answer is a low-to-high range, and repeat the \
+         study's limitation (for example, whether the rate is a total or the increase a law causes).",
         label = domain.label,
         desc = domain.description,
         id = domain.id,
@@ -150,8 +162,16 @@ fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
          (five-year horizon; ADU, missing middle, transit-oriented density, parking and 50% fee-cut scenarios). \
          Consult every expert whose domain the question touches, then synthesize. Keep each expert's figures \
          tied to their study ids and outcome measures. Use only figures and study ids that appear in the experts' \
-         answers, copied exactly; never invent, compute, or round them. Never add effects across scenarios or \
-         outcome types; flag interactions and disagreements instead.";
+         answers or the state profile, copied exactly; never invent, compute, convert, or round them. Never add effects \
+         across scenarios or outcome types; flag interactions and disagreements instead. Pass the question to \
+         experts unchanged, including its `STATE:` line.\n\
+         Results must be statewide and compared with a five-year current-rules baseline. Write for a \
+         non-technical policymaker, in these sections:\n\
+         1. Statewide five-year effect vs. baseline: direction and a plausible range, naming the outcome measure \
+         (or say plainly that the evidence cannot support a range yet).\n\
+         2. What drives it.\n\
+         3. What it is most sensitive to.\n\
+         4. What this cannot tell you.";
     with_tool_instructions(base.to_string(), tools, plan)
 }
 
@@ -187,12 +207,19 @@ impl Tool for ConsultExpert {
 
         let mut ctx = AgentContext::new(Arc::new(child));
         ctx.transcript.push(Message::user(question.to_string()));
-        let outcome = ReActLoop { max_steps: 4 }.run(self.agent.as_ref(), &mut ctx).await?;
+        let outcome = ReActLoop { max_steps: 6 }.run(self.agent.as_ref(), &mut ctx).await?;
         // An expert that never called a tool is answering from memory.
         let grounded = ctx.transcript.iter().any(|m| m.role == condesate::Role::Tool);
         let answer = if grounded { outcome.final_text } else { EXPERT_UNGROUNDED.to_string() };
         ctx.services
             .storage_set(&format!("findings/{}/answer", self.domain), &answer)
+            .await?;
+        // Keep what the tools actually returned, so the citation check can
+        // tell tool-sourced figures from figures the model introduced.
+        let tool_output: Vec<&str> =
+            ctx.transcript.iter().filter(|m| m.role == condesate::Role::Tool).map(|m| m.content.as_str()).collect();
+        ctx.services
+            .storage_set(&format!("findings/{}/tool_output", self.domain), &tool_output.join("\n"))
             .await?;
         Ok(answer)
     }
@@ -208,6 +235,17 @@ const UNGROUNDED_NUDGE: &str = "You have not consulted any expert yet. Do not an
 /// Returned instead of an expert's text when it never called a tool.
 pub const EXPERT_UNGROUNDED: &str =
     "The expert did not consult the evidence base, so it has no grounded answer. Treat this domain as unanswered.";
+
+/// Feedback sent to the leader when its answer has unsourced figures.
+fn revision_request(issues: &[String]) -> String {
+    format!(
+        "An automatic check found figures in your answer that no tool produced:\n{}\n\
+         Rewrite the complete answer in the same four sections. Copy figures exactly as they appear in the \
+         experts' answers or the state profile. Do not round, approximate (no \"about 17k\"), convert, or \
+         compute percentages yourself; if you need a figure no tool produced, describe it in words instead.",
+        issues.iter().map(|i| format!("- {i}")).collect::<Vec<_>>().join("\n")
+    )
+}
 
 /// Domains whose experts recorded findings in this activation.
 async fn consulted_domains(services: &GuardedServices) -> Result<Vec<String>> {
@@ -270,7 +308,9 @@ fn numbers(line: &str) -> Vec<String> {
 
 /// Study ids the answer cites that aren't in the ontology, and figures on a
 /// line citing a study that don't appear anywhere in that study's record.
-pub fn check_citations(ontology: &Ontology, text: &str) -> Vec<String> {
+/// `allowed` holds extra figures that are legitimately in play, such as the
+/// chosen state's baseline numbers.
+pub fn check_citations(ontology: &Ontology, text: &str, allowed: &[String]) -> Vec<String> {
     let mut issues = Vec::new();
     for line in text.lines() {
         let mut cited = Vec::new();
@@ -285,6 +325,16 @@ pub fn check_citations(ontology: &Ontology, text: &str) -> Vec<String> {
             }
         }
         if cited.is_empty() {
+            // No study named: a figure is still suspect if no tool produced it.
+            for n in numbers(line) {
+                let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
+                let small_ordinal = n.parse::<f64>().is_ok_and(|v| v <= 10.0 && v.fract() == 0.0);
+                // Rate denominators ("per 100,000", "100 k") aren't claims.
+                let denominator = matches!(n.as_str(), "100" | "1000" | "100000");
+                if !is_year && !small_ordinal && !denominator && !allowed.contains(&n) && !allowed.is_empty() {
+                    issues.push(format!("figure {n} (\"{}\") did not come from any tool output in this run", line.trim().chars().take(80).collect::<String>()));
+                }
+            }
             continue;
         }
         let record: String = cited
@@ -296,7 +346,7 @@ pub fn check_citations(ontology: &Ontology, text: &str) -> Vec<String> {
         let ids: Vec<&str> = cited.iter().map(|s| s.id.as_str()).collect();
         for n in numbers(line) {
             let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
-            if is_year || ids.iter().any(|id| id.contains(&n)) || known.contains(&n) {
+            if is_year || ids.iter().any(|id| id.contains(&n)) || known.contains(&n) || allowed.contains(&n) {
                 continue;
             }
             issues.push(format!("figure {n} next to {} does not appear in that study's record", ids.join(", ")));
@@ -349,7 +399,21 @@ impl Panel {
         self.experts.get(domain).cloned()
     }
 
+    /// Ask without choosing a state. The challenge wants statewide results,
+    /// so prefer [`Self::ask_for_state`].
     pub async fn ask(&self, question: &str) -> Result<PanelAnswer> {
+        self.ask_for_state(question, None).await
+    }
+
+    /// Ask about one state (USPS code, FIPS or name). Experts receive a
+    /// `STATE:` line and can pull that state's profile; the leader gets the
+    /// profile up front.
+    pub async fn ask_for_state(&self, question: &str, state: Option<&str>) -> Result<PanelAnswer> {
+        let state = match state {
+            Some(s) => Some(crate::state::find(s).ok_or_else(|| anyhow!("unknown state '{s}'; use a USPS code like CA or a full name"))?),
+            None => None,
+        };
+        let message = crate::state::with_state(question, state);
         let storage = InMemoryStorage::new();
         let audit = MemoryAudit::new();
         let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), audit.clone(), Arc::new(SystemClock));
@@ -375,7 +439,10 @@ impl Panel {
         let orchestrator = BasicAgent::new(ORCHESTRATOR, orchestrator_prompt(&specs, &self.plan), model, consult_tools);
 
         let mut ctx = AgentContext::new(services.clone());
-        ctx.transcript.push(Message::user(question.to_string()));
+        if let (Some(s), false) = (state, self.plan.is_offline()) {
+            ctx.transcript.push(Message::user(format!("Context for this question:\n{}", s.profile())));
+        }
+        ctx.transcript.push(Message::user(message));
         let mut outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
 
         // A leader that answers without consulting anyone is answering from
@@ -386,14 +453,37 @@ impl Panel {
             outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
             consulted = consulted_domains(&services).await?;
         }
-        let text = if consulted.is_empty() && !self.plan.is_offline() {
-            format!("{UNGROUNDED_LABEL}\n\n{}", outcome.final_text)
-        } else {
-            outcome.final_text
-        };
         // Model answers are checked against the ontology; offline answers
-        // are verbatim tool output and need no check.
-        let citation_issues = if self.plan.is_offline() { Vec::new() } else { check_citations(self.ontology, &text) };
+        // are verbatim tool output and need no check. Figures are sourced if
+        // a tool returned them in this run (evidence briefs, state profile,
+        // scale_rate arithmetic).
+        let mut allowed: Vec<String> = state.map(|s| numbers(&s.profile())).unwrap_or_default();
+        for key in services.storage_keys("findings/").await? {
+            if key.ends_with("/tool_output") {
+                if let Some(out) = services.storage_get(&key).await? {
+                    allowed.extend(numbers(&out));
+                }
+            }
+        }
+        let check = |t: &str| if self.plan.is_offline() { Vec::new() } else { check_citations(self.ontology, t, &allowed) };
+        let mut answer = outcome.final_text;
+        let mut citation_issues = check(&answer);
+        // One revision pass: hand the leader its own unsourced figures and
+        // keep the rewrite only if it is cleaner.
+        if !citation_issues.is_empty() && !consulted.is_empty() {
+            ctx.transcript.push(Message::user(revision_request(&citation_issues)));
+            let revised = ReActLoop { max_steps: 4 }.run(&orchestrator, &mut ctx).await?.final_text;
+            let revised_issues = check(&revised);
+            if revised_issues.len() < citation_issues.len() {
+                answer = revised;
+                citation_issues = revised_issues;
+            }
+        }
+        let text = if consulted.is_empty() && !self.plan.is_offline() {
+            format!("{UNGROUNDED_LABEL}\n\n{answer}")
+        } else {
+            answer
+        };
         let text = if citation_issues.is_empty() {
             text
         } else {
@@ -448,11 +538,48 @@ mod tests {
                       | **rose_2024_adu** | +12 % annual growth |\n\
                       | **marantz_elmendorf_kim_2023** | 4 % of total housing stock |\n\
                       The terner_sb9_2021 study found about 700,000 feasible units on 5.4% of parcels.";
-        let issues = check_citations(o, answer);
+        let issues = check_citations(o, answer, &[]);
         assert!(issues.iter().any(|i| i.contains("`rose_2024_adu` is not a study")), "{issues:#?}");
         assert!(issues.iter().any(|i| i.contains("figure 4 next to marantz_elmendorf_kim_2023")), "{issues:#?}");
         assert!(!issues.iter().any(|i| i.contains("pew_2026_adu")), "correct figures pass: {issues:#?}");
         assert!(!issues.iter().any(|i| i.contains("terner_sb9_2021")), "correct figures pass: {issues:#?}");
+    }
+
+    #[test]
+    fn citation_check_accepts_the_states_own_baseline_figures() {
+        let o = Ontology::bundled();
+        let s = crate::state::find("CA").unwrap();
+        let central = s.baseline().central.to_string();
+        let line = format!("Against a baseline of {} units, pew_2026_adu reports 81 per 100 000 residents.", crate::state::thousands(s.baseline().central));
+        assert!(check_citations(o, &line, &[]).iter().any(|i| i.contains(&central)));
+        assert!(check_citations(o, &line, &numbers(&s.profile())).is_empty());
+    }
+
+    #[test]
+    fn citation_check_flags_figures_no_tool_produced() {
+        let o = Ontology::bundled();
+        let s = crate::state::find("PA").unwrap();
+        let allowed = numbers(&s.profile());
+        // From a real gpt-oss-120b answer: 2.3 per 1,000 is 230 per 100,000, not 23.
+        let issues = check_citations(o, "| PA state profile | per 1 000 residents | 2.3 (≈ 23 per 100 000) |", &allowed);
+        assert!(issues.iter().any(|i| i.contains("figure 23 ")), "{issues:#?}");
+        let from_tool = numbers(&crate::state::scale_rate(s, 81.0));
+        let mut ok = allowed.clone();
+        ok.extend(from_tool);
+        let scaled = crate::state::thousands((81.0 * s.population as f64 / 100_000.0 * 5.0).round() as u64);
+        assert!(check_citations(o, &format!("Scaled: {scaled} units over five years."), &ok).is_empty());
+    }
+
+    #[tokio::test]
+    async fn state_questions_lead_with_the_state_baseline_and_required_sections() {
+        let a = panel().ask_for_state("How many ADUs could a state law add?", Some("PA")).await.unwrap();
+        assert!(a.text.contains("## Statewide baseline: Pennsylvania"), "{}", a.text);
+        assert!(a.text.contains("FIVE-YEAR BASELINE"));
+        assert!(a.text.contains("Applying this to Pennsylvania"));
+        assert!(a.text.contains("## What this cannot tell you"));
+        assert!(a.audit.iter().any(|l| l.contains("expert.adu") && l.contains("tool:state.profile") && l.contains("ALLOW")), "{:#?}", a.audit);
+        assert_eq!(a.consulted, vec!["adu".to_string()], "the STATE line must not change routing");
+        assert!(panel().ask_for_state("q", Some("Narnia")).await.is_err());
     }
 
     #[test]

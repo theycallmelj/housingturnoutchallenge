@@ -19,6 +19,20 @@ question ─► orchestrator ──consult.<domain>──► expert.<domain> ─
 
 Each domain has three tools: `evidence_brief`, `find_studies`, and `find_datasets`.
 
+## Statewide answers
+
+The challenge wants **statewide** impacts against a **five-year current-rules baseline**, with direction, magnitude, uncertainty, drivers, and limits. Pass a state:
+
+```bash
+cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- --state PA "How many ADUs could a state law add?"
+```
+
+- **State data:** `data/derived/state_baseline.csv` holds housing units permitted 2021-2025 (Census BPS) and 2025 population (Census PEP) for all 50 states and DC. It's rebuilt by `python3 scripts/fetch_state_baseline.py`; provenance is in `research/data/`.
+- **Baseline rule:** average annual permits × 5, with the slowest and fastest year × 5 as the range. Outcome = units authorized by permit.
+- **`state.profile`** gives every expert the state's baseline. **`state.scale_rate`** converts a study's per-100,000-residents rate into statewide units with the arithmetic shown, so models never do the math.
+- **Answer structure:** (1) statewide five-year effect vs. baseline, as a range; (2) drivers; (3) sensitivities; (4) what this cannot tell you.
+- **Revision pass:** if the citation check finds figures no tool produced, the leader gets the list once and rewrites. The cleaner version is kept, and anything still unsourced stays flagged.
+
 ## How the permissions work
 
 - The orchestrator is admitted with a spawn grant for `expert.*`. Each `consult.<domain>` tool spawns its expert through `GuardedServices::spawn_child`, so the expert's authority is **attenuated** from the orchestrator's.

@@ -11,6 +11,7 @@
 //!   anything else.
 
 use crate::ontology::Ontology;
+use crate::state::split_state;
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use condesate::{CompletionRequest, CompletionResponse, ModelClass, ModelProvider, Role, ToolCall};
@@ -101,29 +102,42 @@ impl ModelProvider for OfflineExpertModel {
     }
 
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse> {
+        let (state, question) = split_state(&last_user(&req));
         if assistant_turns(&req) == 0 {
-            return Ok(CompletionResponse {
-                content: format!("Pulling the {} evidence brief.", self.domain),
-                tool_calls: vec![ToolCall {
-                    name: format!("{}.evidence_brief", self.domain),
-                    args: json!({ "query": last_user(&req) }),
-                }],
-            });
+            let mut calls = vec![ToolCall {
+                name: format!("{}.evidence_brief", self.domain),
+                args: json!({ "query": question }),
+            }];
+            if let Some(s) = state {
+                calls.push(ToolCall { name: "state.profile".into(), args: json!({ "state": s.abbr }) });
+            }
+            return Ok(CompletionResponse { content: format!("Pulling the {} evidence brief.", self.domain), tool_calls: calls });
         }
-        let brief = tool_results(&req).pop().unwrap_or_default();
-        Ok(CompletionResponse {
-            content: format!(
-                "{}\nEach figure applies only to its own outcome measure and setting; treat them as comparison cases, not a forecast.",
-                condense_brief(&brief, 4)
-            ),
-            tool_calls: vec![],
-        })
+        let results = tool_results(&req);
+        let brief = results.iter().find(|r| r.starts_with("DOMAIN ")).cloned().unwrap_or_default();
+        let mut out = condense_brief(&brief, 4);
+        if let Some(s) = state {
+            out.push_str(&format!(
+                "\nApplying this to {}: these figures come from other places and periods. They show direction and plausible magnitude, not a statewide forecast; scale per-capita rates with the state profile's conversion line.",
+                s.name
+            ));
+        }
+        out.push_str("\nEach figure applies only to its own outcome measure and setting; treat them as comparison cases, not a forecast.");
+        Ok(CompletionResponse { content: out, tool_calls: vec![] })
     }
 }
 
+/// What every panel answer must say the model cannot tell policymakers.
+pub const STANDING_LIMITS: &str = "\
+- The evidence comes from specific cities, states and countries; none is a validated forecast for this state.
+- Figures use different outcomes (permits, applications, stock, feasible capacity, parking spaces) and must not be added together.
+- The baseline assumes the 2021-2025 permit pace continues; interest rates, recessions or construction costs could move it either way.
+- Permits are not completions; some permitted units are never built, and the rest take a year or more.
+- Local implementation of state law varies, so statewide totals can differ from what a uniform rollout would imply.";
+
 /// Deterministic orchestrator: route the question with the ontology's
 /// domain keywords, consult each matching expert in one step, then stitch
-/// their answers together under the panel's standing caveats.
+/// their answers together in the structure the challenge asks for.
 pub struct OfflineOrchestratorModel {
     pub ontology: &'static Ontology,
 }
@@ -135,7 +149,9 @@ impl ModelProvider for OfflineOrchestratorModel {
     }
 
     async fn complete(&self, req: CompletionRequest) -> Result<CompletionResponse> {
-        let question = last_user(&req);
+        let message = last_user(&req);
+        let (state, question) = split_state(&message);
+        // Route on the question only, so the context line doesn't steer it.
         let domains = self.ontology.route(&question);
         if assistant_turns(&req) == 0 {
             let labels: Vec<&str> = domains.iter().map(|d| d.label.as_str()).collect();
@@ -145,19 +161,28 @@ impl ModelProvider for OfflineOrchestratorModel {
                     .iter()
                     .map(|d| ToolCall {
                         name: format!("consult.{}", d.id),
-                        args: json!({ "question": question }),
+                        args: json!({ "question": message }),
                     })
                     .collect(),
             });
         }
         let answers = tool_results(&req);
         let mut out = format!("Question: {question}\n");
+        match state {
+            Some(s) => out.push_str(&format!(
+                "\n## Statewide baseline: {}\n{}\n",
+                s.name,
+                s.profile()
+            )),
+            None => out.push_str("\n(No state selected. The challenge asks for statewide results; pass a state to get its baseline.)\n"),
+        }
         for (d, a) in domains.iter().zip(answers.iter()) {
-            out.push_str(&format!("\n## {} ({})\n{a}\n", d.label, d.expert));
+            out.push_str(&format!("\n## Evidence: {} ({})\n{a}\n", d.label, d.expert));
         }
         if domains.len() > 1 {
             out.push_str("\n## Combining these\nThe experts' estimates use different outcome measures and settings. Don't add them together; policy effects interact (see the modeling domain, e.g. kulka_sood_chiumenti_2026).\n");
         }
+        out.push_str(&format!("\n## What this cannot tell you\n{STANDING_LIMITS}\n"));
         Ok(CompletionResponse { content: out, tool_calls: vec![] })
     }
 }

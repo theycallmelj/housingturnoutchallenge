@@ -133,10 +133,18 @@ fn evidence_weight(evidence_type: &str) -> u32 {
     }
 }
 
+/// Words too common in questions to say anything about relevance.
+const STOPWORDS: &[&str] = &[
+    "the", "and", "for", "how", "many", "much", "what", "would", "could", "does", "with", "from", "that",
+    "this", "state", "law", "add", "are", "can", "will", "about", "under", "our", "new",
+];
+
+/// Lowercased words, crudely singularized (`adus` matches `adu`), minus stopwords.
 fn tokens(text: &str) -> Vec<String> {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| t.len() > 2)
+        .filter(|t| t.len() > 2 && !STOPWORDS.contains(t))
+        .map(|t| if t.len() > 3 && t.ends_with('s') && !t.ends_with("ss") { &t[..t.len() - 1] } else { t })
         .map(str::to_string)
         .collect()
 }
@@ -204,7 +212,9 @@ impl Ontology {
             .map(|s| {
                 let text = format!("{} {} {} {}", s.title, s.finding, s.relevance, s.authors);
                 let overlap = tokens(&text).iter().filter(|t| q.contains(*t)).count() as u32;
-                (overlap * 2 + evidence_weight(&s.evidence_type), s)
+                // A finding with a figure can anchor a range; one without can't.
+                let quantified = u32::from(s.finding.chars().any(|c| c.is_ascii_digit()));
+                (overlap * 2 + evidence_weight(&s.evidence_type) + quantified * 2, s)
             })
             .collect();
         hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.id.cmp(&b.1.id)));
@@ -489,6 +499,13 @@ mod tests {
         let o = Ontology::bundled();
         let top = o.find_studies(Some("missing_middle"), None, "SB 9 lot splits feasible", 3);
         assert_eq!(top[0].id, "terner_sb9_2021");
+    }
+
+    #[test]
+    fn how_many_questions_surface_quantified_studies() {
+        let top = Ontology::bundled().find_studies(Some("adu"), None, "How many ADUs could a state law add?", 3);
+        let ids: Vec<&str> = top.iter().map(|s| s.id.as_str()).collect();
+        assert!(ids.contains(&"pew_2026_adu"), "{ids:?}");
     }
 
     #[test]
