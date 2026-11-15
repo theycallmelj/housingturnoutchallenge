@@ -19,6 +19,10 @@ use serde_json::{json, Value};
 
 const MAX_TOKENS: u32 = 2048;
 const MAX_ATTEMPTS: u32 = 3;
+/// Per-request limit, so one stalled host can't hang a run (or a CI job).
+/// Override with `HOUSING_LLM_TIMEOUT_SECS`.
+const DEFAULT_TIMEOUT_SECS: u64 = 120;
+pub const TIMEOUT_ENV: &str = "HOUSING_LLM_TIMEOUT_SECS";
 /// Tool results are replayed to the model as user turns with this prefix.
 const TOOL_RESULT_MARKER: &str = "[TOOL RESULT]";
 const TOOL_CALL_PREFIX: &str = "TOOL_CALL:";
@@ -213,7 +217,15 @@ impl OpenAiCompatModel {
             base_url: base_url.trim_end_matches('/').to_string(),
             model: model.to_string(),
             api_key,
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(
+                    std::env::var(TIMEOUT_ENV)
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(DEFAULT_TIMEOUT_SECS),
+                ))
+                .build()
+                .expect("HTTP client"),
         }
     }
 }
@@ -294,12 +306,17 @@ impl OpenAiCompatModel {
         if let Some(key) = &self.api_key {
             call = call.bearer_auth(key);
         }
-        let resp = call.send().await.with_context(|| {
-            format!(
-                "request to {} failed; is the model server running?",
-                self.base_url
-            )
-        })?;
+        let resp = match call.send().await {
+            Ok(resp) => resp,
+            // A stalled host is worth retrying elsewhere, not fatal.
+            Err(e) if e.is_timeout() => return Ok(Err((None, format!("request timed out: {e}")))),
+            Err(e) => {
+                return Err(anyhow::Error::new(e).context(format!(
+                    "request to {} failed; is the model server running?",
+                    self.base_url
+                )))
+            }
+        };
         let status = resp.status();
         let value: Value = resp
             .json()

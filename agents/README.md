@@ -140,6 +140,7 @@ cargo run --features llm --manifest-path agents/Cargo.toml --bin housing-ask -- 
 | `HOUSING_LEADER_MODEL` | Registry id overriding the leader |
 | `HOUSING_EXPERT_MODEL` | Registry id overriding every expert |
 | `HOUSING_EXPERT_MODEL_<DOMAIN>` | Per-expert override, e.g. `HOUSING_EXPERT_MODEL_ADU=qwen3-14b` |
+| `HOUSING_LLM_TIMEOUT_SECS` | Per-request timeout (default 120). A timed-out request is retried, on another host for OpenRouter |
 
 Each agent's manifest records the host and the model it runs (e.g. `openrouter` / `openai/gpt-oss-120b` for the orchestrator), so the `--audit` trail shows which model made each call. The MCP server reads the same variables; add them under `env` in `.mcp.json` to use open models there.
 
