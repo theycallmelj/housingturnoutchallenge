@@ -135,8 +135,8 @@ fn evidence_weight(evidence_type: &str) -> u32 {
 
 /// Words too common in questions to say anything about relevance.
 const STOPWORDS: &[&str] = &[
-    "the", "and", "for", "how", "many", "much", "what", "would", "could", "does", "with", "from", "that",
-    "this", "state", "law", "add", "are", "can", "will", "about", "under", "our", "new",
+    "the", "and", "for", "how", "many", "much", "what", "would", "could", "does", "with", "from",
+    "that", "this", "state", "law", "add", "are", "can", "will", "about", "under", "our", "new",
 ];
 
 /// Lowercased words, crudely singularized (`adus` matches `adu`), minus stopwords.
@@ -144,7 +144,13 @@ fn tokens(text: &str) -> Vec<String> {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
         .filter(|t| t.len() > 2 && !STOPWORDS.contains(t))
-        .map(|t| if t.len() > 3 && t.ends_with('s') && !t.ends_with("ss") { &t[..t.len() - 1] } else { t })
+        .map(|t| {
+            if t.len() > 3 && t.ends_with('s') && !t.ends_with("ss") {
+                &t[..t.len() - 1]
+            } else {
+                t
+            }
+        })
         .map(str::to_string)
         .collect()
 }
@@ -183,7 +189,12 @@ impl Ontology {
         let mut scored: Vec<(usize, &Domain)> = self
             .domains
             .iter()
-            .map(|d| (d.keywords.iter().filter(|k| q.contains(k.as_str())).count(), d))
+            .map(|d| {
+                (
+                    d.keywords.iter().filter(|k| q.contains(k.as_str())).count(),
+                    d,
+                )
+            })
             .filter(|(n, _)| *n > 0)
             .collect();
         scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.id.cmp(&b.1.id)));
@@ -214,7 +225,10 @@ impl Ontology {
                 let overlap = tokens(&text).iter().filter(|t| q.contains(*t)).count() as u32;
                 // A finding with a figure can anchor a range; one without can't.
                 let quantified = u32::from(s.finding.chars().any(|c| c.is_ascii_digit()));
-                (overlap * 2 + evidence_weight(&s.evidence_type) + quantified * 2, s)
+                (
+                    overlap * 2 + evidence_weight(&s.evidence_type) + quantified * 2,
+                    s,
+                )
             })
             .collect();
         hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.id.cmp(&b.1.id)));
@@ -236,7 +250,9 @@ impl Ontology {
     }
 
     pub fn format_study(&self, s: &Study) -> String {
-        let outcome = self.outcome(&s.outcome).map_or(s.outcome.as_str(), |o| o.label.as_str());
+        let outcome = self
+            .outcome(&s.outcome)
+            .map_or(s.outcome.as_str(), |o| o.label.as_str());
         format!(
             "[{id}] {authors} ({year}), \"{title}\". {venue}.\n  evidence: {etype}; outcome: {outcome}; verification: {verif}\n  finding: {finding}\n  limitation: {limitation}\n  use: {relevance}\n  source: {url}",
             id = s.id,
@@ -279,10 +295,19 @@ impl Ontology {
             return Some(self.format_dataset(d));
         }
         if let Some(sc) = self.scenarios.iter().find(|x| x.id == id) {
-            return Some(format!("[{}] {}: {} Mechanisms: {}", sc.id, sc.label, sc.benchmark_definition, sc.key_mechanisms.join(", ")));
+            return Some(format!(
+                "[{}] {}: {} Mechanisms: {}",
+                sc.id,
+                sc.label,
+                sc.benchmark_definition,
+                sc.key_mechanisms.join(", ")
+            ));
         }
         if let Some(d) = self.domain(id) {
-            return Some(format!("[{}] {} (expert: {}): {}", d.id, d.label, d.expert, d.description));
+            return Some(format!(
+                "[{}] {} (expert: {}): {}",
+                d.id, d.label, d.expert, d.description
+            ));
         }
         if let Some(m) = self.mechanisms.iter().find(|x| x.id == id) {
             return Some(format!("[{}] {}: {}", m.id, m.label, m.description));
@@ -297,16 +322,31 @@ impl Ontology {
     /// studies for `query`, the usable datasets, and the scenario caveats.
     pub fn evidence_brief(&self, domain_id: &str, query: &str, limit: usize) -> Option<String> {
         let domain = self.domain(domain_id)?;
-        let mut out = format!("DOMAIN {}: {}\n{}\n", domain.id, domain.label, domain.description);
-        for sc in self.scenarios.iter().filter(|s| domain.scenarios.contains(&s.id)) {
-            out.push_str(&format!("\nSCENARIO {}: {}\n", sc.label, sc.benchmark_definition));
+        let mut out = format!(
+            "DOMAIN {}: {}\n{}\n",
+            domain.id, domain.label, domain.description
+        );
+        for sc in self
+            .scenarios
+            .iter()
+            .filter(|s| domain.scenarios.contains(&s.id))
+        {
+            out.push_str(&format!(
+                "\nSCENARIO {}: {}\n",
+                sc.label, sc.benchmark_definition
+            ));
             for m in &sc.key_mechanisms {
                 if let Some(mech) = self.mechanisms.iter().find(|x| &x.id == m) {
-                    out.push_str(&format!("  - mechanism {}: {}\n", mech.label, mech.description));
+                    out.push_str(&format!(
+                        "  - mechanism {}: {}\n",
+                        mech.label, mech.description
+                    ));
                 }
             }
         }
-        out.push_str("\nSTUDIES (most relevant first; quote outcome and evidence type with every number)\n");
+        out.push_str(
+            "\nSTUDIES (most relevant first; quote outcome and evidence type with every number)\n",
+        );
         for s in self.find_studies(Some(domain_id), None, query, limit) {
             out.push_str(&self.format_study(s));
             out.push('\n');
@@ -326,7 +366,10 @@ impl Ontology {
             .map(|d| d.id.as_str())
             .collect();
         if !blocked.is_empty() {
-            out.push_str(&format!("NOT USABLE (license status not open_verified): {}\n", blocked.join(", ")));
+            out.push_str(&format!(
+                "NOT USABLE (license status not open_verified): {}\n",
+                blocked.join(", ")
+            ));
         }
         Some(out)
     }
@@ -371,15 +414,24 @@ impl Ontology {
                 errs.push(format!("study {} has unknown outcome {}", s.id, s.outcome));
             }
             if !self.enums.evidence_type.contains_key(&s.evidence_type) {
-                errs.push(format!("study {} has unknown evidence_type {}", s.id, s.evidence_type));
+                errs.push(format!(
+                    "study {} has unknown evidence_type {}",
+                    s.id, s.evidence_type
+                ));
             }
             if !self.enums.verification.contains_key(&s.verification) {
-                errs.push(format!("study {} has unknown verification {}", s.id, s.verification));
+                errs.push(format!(
+                    "study {} has unknown verification {}",
+                    s.id, s.verification
+                ));
             }
         }
         for d in &self.datasets {
             if !self.enums.license_status.contains_key(&d.license_status) {
-                errs.push(format!("dataset {} has unknown license_status {}", d.id, d.license_status));
+                errs.push(format!(
+                    "dataset {} has unknown license_status {}",
+                    d.id, d.license_status
+                ));
             }
             if d.usable() && d.provenance_file.is_none() {
                 errs.push(format!("usable dataset {} has no provenance_file", d.id));
@@ -400,7 +452,10 @@ impl Ontology {
         for p in &self.pilot_states {
             for d in &p.datasets {
                 if !datasets.contains(d.as_str()) {
-                    errs.push(format!("pilot state {} references unknown dataset {d}", p.state));
+                    errs.push(format!(
+                        "pilot state {} references unknown dataset {d}",
+                        p.state
+                    ));
                 }
             }
         }
@@ -456,9 +511,15 @@ mod tests {
                 let is_id = i % 2 == 1
                     && span.contains('_')
                     && !span.starts_with("mcp__")
-                    && span.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
+                    && span
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_');
                 if is_id {
-                    assert!(known.contains(span), "{} cites unknown id `{span}`", path.display());
+                    assert!(
+                        known.contains(span),
+                        "{} cites unknown id `{span}`",
+                        path.display()
+                    );
                 }
             }
         }
@@ -490,7 +551,9 @@ mod tests {
         let o = Ontology::bundled();
         let usable = o.find_datasets(None, None, true);
         assert!(usable.iter().all(|d| d.usable()));
-        assert!(usable.iter().all(|d| d.id != "hud_usps_vacancy" && d.id != "costar"));
+        assert!(usable
+            .iter()
+            .all(|d| d.id != "hud_usps_vacancy" && d.id != "costar"));
         assert!(usable.iter().any(|d| d.id == "census_bps"));
     }
 
@@ -503,15 +566,25 @@ mod tests {
 
     #[test]
     fn how_many_questions_surface_quantified_studies() {
-        let top = Ontology::bundled().find_studies(Some("adu"), None, "How many ADUs could a state law add?", 3);
+        let top = Ontology::bundled().find_studies(
+            Some("adu"),
+            None,
+            "How many ADUs could a state law add?",
+            3,
+        );
         let ids: Vec<&str> = top.iter().map(|s| s.id.as_str()).collect();
         assert!(ids.contains(&"pew_2026_adu"), "{ids:?}");
     }
 
     #[test]
     fn evidence_brief_flags_unusable_datasets() {
-        let brief = Ontology::bundled().evidence_brief("adu", "permits", 5).unwrap();
+        let brief = Ontology::bundled()
+            .evidence_brief("adu", "permits", 5)
+            .unwrap();
         assert!(brief.contains("USABLE DATASETS"));
-        assert!(brief.contains("microsoft_footprints"), "rejected sources are named as not usable");
+        assert!(
+            brief.contains("microsoft_footprints"),
+            "rejected sources are named as not usable"
+        );
     }
 }

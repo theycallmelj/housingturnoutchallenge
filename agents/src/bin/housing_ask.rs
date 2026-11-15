@@ -37,11 +37,20 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("note: no --state given; the challenge asks for statewide results");
     }
 
-    let answer = Panel::from_env(Ontology::bundled())?.ask_for_state(&question, state.as_deref()).await?;
+    let answer = Panel::from_env(Ontology::bundled())?
+        .ask_for_state(&question, state.as_deref())
+        .await?;
     println!("{}", answer.text);
-    println!("\n(models: {}; experts consulted: {})", answer.models, answer.consulted.join(", "));
+    println!(
+        "\n(models: {}; experts consulted: {})",
+        answer.models,
+        answer.consulted.join(", ")
+    );
     if !answer.citation_issues.is_empty() {
-        eprintln!("warning: {} citation issue(s); see the Citation check section", answer.citation_issues.len());
+        eprintln!(
+            "warning: {} citation issue(s); see the Citation check section",
+            answer.citation_issues.len()
+        );
     }
     if show_audit {
         println!("\n--- permission audit trail ---");

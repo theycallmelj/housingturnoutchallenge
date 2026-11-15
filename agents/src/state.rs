@@ -68,9 +68,19 @@ impl StateBaseline {
     /// Plain-language profile given to the experts and shown to users.
     pub fn profile(&self) -> String {
         let b = self.baseline();
-        let years: Vec<String> = self.permits.iter().map(|(y, n)| format!("{y}: {}", thousands(*n))).collect();
+        let years: Vec<String> = self
+            .permits
+            .iter()
+            .map(|(y, n)| format!("{y}: {}", thousands(*n)))
+            .collect();
         let total_latest: u64 = self.latest_by_type.iter().sum();
-        let share = |n: u64| if total_latest == 0 { 0.0 } else { 100.0 * n as f64 / total_latest as f64 };
+        let share = |n: u64| {
+            if total_latest == 0 {
+                0.0
+            } else {
+                100.0 * n as f64 / total_latest as f64
+            }
+        };
         format!(
             "STATE PROFILE {name} ({abbr})\n\
              Population (2025 estimate): {pop}\n\
@@ -123,7 +133,11 @@ pub fn scale_rate(s: &StateBaseline, per_100k_per_year: f64) -> String {
 }
 
 fn trim_float(x: f64) -> String {
-    if x.fract() == 0.0 { format!("{x:.0}") } else { format!("{x}") }
+    if x.fract() == 0.0 {
+        format!("{x:.0}")
+    } else {
+        format!("{x}")
+    }
 }
 
 /// `1234567` -> `1,234,567`.
@@ -145,9 +159,18 @@ fn parse() -> Vec<StateBaseline> {
     let years: Vec<(usize, u32)> = header
         .iter()
         .enumerate()
-        .filter_map(|(i, h)| h.strip_prefix("permits_").and_then(|y| y.parse().ok()).map(|y| (i, y)))
+        .filter_map(|(i, h)| {
+            h.strip_prefix("permits_")
+                .and_then(|y| y.parse().ok())
+                .map(|y| (i, y))
+        })
         .collect();
-    let col = |name: &str| header.iter().position(|h| *h == name).unwrap_or_else(|| panic!("missing column {name}"));
+    let col = |name: &str| {
+        header
+            .iter()
+            .position(|h| *h == name)
+            .unwrap_or_else(|| panic!("missing column {name}"))
+    };
     let (c1, c2, c3, c5) = (
         col("permits_2025_1unit"),
         col("permits_2025_2unit"),
@@ -158,7 +181,11 @@ fn parse() -> Vec<StateBaseline> {
         .filter(|l| !l.trim().is_empty())
         .map(|l| {
             let f: Vec<&str> = l.split(',').collect();
-            let n = |i: usize| f[i].trim().parse::<u64>().unwrap_or_else(|_| panic!("bad number in {l}"));
+            let n = |i: usize| {
+                f[i].trim()
+                    .parse::<u64>()
+                    .unwrap_or_else(|_| panic!("bad number in {l}"))
+            };
             StateBaseline {
                 fips: f[0].to_string(),
                 abbr: f[1].to_string(),
@@ -194,7 +221,9 @@ pub fn split_state(text: &str) -> (Option<&'static StateBaseline>, String) {
     let mut rest = Vec::new();
     for line in text.lines() {
         match line.trim().strip_prefix(STATE_LINE.trim_end()) {
-            Some(code) if state.is_none() && find(code.trim()).is_some() => state = find(code.trim()),
+            Some(code) if state.is_none() && find(code.trim()).is_some() => {
+                state = find(code.trim())
+            }
             _ => rest.push(line),
         }
     }
@@ -204,9 +233,9 @@ pub fn split_state(text: &str) -> (Option<&'static StateBaseline>, String) {
 /// Look up by USPS abbreviation, FIPS code or full name (case-insensitive).
 pub fn find(query: &str) -> Option<&'static StateBaseline> {
     let q = query.trim();
-    all().iter().find(|s| {
-        s.abbr.eq_ignore_ascii_case(q) || s.fips == q || s.name.eq_ignore_ascii_case(q)
-    })
+    all()
+        .iter()
+        .find(|s| s.abbr.eq_ignore_ascii_case(q) || s.fips == q || s.name.eq_ignore_ascii_case(q))
 }
 
 #[cfg(test)]
@@ -216,7 +245,9 @@ mod tests {
     #[test]
     fn all_fifty_states_and_dc_load() {
         assert_eq!(all().len(), 51);
-        assert!(all().iter().all(|s| s.permits.len() == 5 && s.population > 0));
+        assert!(all()
+            .iter()
+            .all(|s| s.permits.len() == 5 && s.population > 0));
     }
 
     #[test]
@@ -261,8 +292,17 @@ mod tests {
         let s = find("PA").unwrap();
         let out = scale_rate(s, 81.0);
         let per_year = (81.0 * s.population as f64 / 100_000.0).round() as u64;
-        assert!(out.contains(&format!("= {} units per year", thousands(per_year))), "{out}");
-        assert!(out.contains(&format!("= {} units over 5 years", thousands((81.0 * s.population as f64 / 100_000.0 * 5.0).round() as u64))), "{out}");
+        assert!(
+            out.contains(&format!("= {} units per year", thousands(per_year))),
+            "{out}"
+        );
+        assert!(
+            out.contains(&format!(
+                "= {} units over 5 years",
+                thousands((81.0 * s.population as f64 / 100_000.0 * 5.0).round() as u64)
+            )),
+            "{out}"
+        );
         assert!(out.contains("not a forecast"));
     }
 
@@ -270,7 +310,12 @@ mod tests {
     fn profile_gives_the_rate_per_100k_directly() {
         let s = find("PA").unwrap();
         let expected = (s.average_annual() / s.per_100k()).round() as u64;
-        assert!(s.profile().contains(&format!("per 100,000 residents per year: {expected}")), "{}", s.profile());
+        assert!(
+            s.profile()
+                .contains(&format!("per 100,000 residents per year: {expected}")),
+            "{}",
+            s.profile()
+        );
     }
 
     #[test]

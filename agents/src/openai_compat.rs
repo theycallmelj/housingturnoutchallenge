@@ -32,15 +32,22 @@ pub fn clean_tool_call(text: &str) -> String {
         return text.to_string();
     };
     let rest = text[start + TOOL_CALL_PREFIX.len()..].trim_start();
-    let name_end = rest.find(|c: char| c.is_whitespace() || c == '{').unwrap_or(rest.len());
+    let name_end = rest
+        .find(|c: char| c.is_whitespace() || c == '{')
+        .unwrap_or(rest.len());
     let (name, after) = rest.split_at(name_end);
     if name.is_empty() {
         return text.to_string();
     }
     let after = after.trim_start();
-    match serde_json::Deserializer::from_str(after).into_iter::<Value>().next() {
+    match serde_json::Deserializer::from_str(after)
+        .into_iter::<Value>()
+        .next()
+    {
         Some(Ok(args)) => format!("{TOOL_CALL_PREFIX} {name} {args}"),
-        _ if after.is_empty() || after.starts_with(TOOL_RESULT_MARKER) => format!("{TOOL_CALL_PREFIX} {name} {{}}"),
+        _ if after.is_empty() || after.starts_with(TOOL_RESULT_MARKER) => {
+            format!("{TOOL_CALL_PREFIX} {name} {{}}")
+        }
         _ => text.to_string(),
     }
 }
@@ -58,10 +65,15 @@ fn tool_parameters(description: &str) -> Value {
     let mut required = Vec::new();
     let mut rest = description;
     while let Some(open) = rest.find('{') {
-        let Some(close) = rest[open..].find('}') else { break };
+        let Some(close) = rest[open..].find('}') else {
+            break;
+        };
         let arg = &rest[open + 1..open + close];
         rest = &rest[open + close + 1..];
-        if arg.is_empty() || !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || props.contains_key(arg) {
+        if arg.is_empty()
+            || !arg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            || props.contains_key(arg)
+        {
             continue;
         }
         let kind = if arg.starts_with("usable") {
@@ -90,7 +102,9 @@ pub fn build_body(model: &str, req: &CompletionRequest) -> Value {
             Role::Assistant => json!({ "role": "assistant", "content": m.content }),
             // condesate doesn't keep tool-call ids, so results go back as
             // marked user turns rather than OpenAI `tool` messages.
-            Role::Tool => json!({ "role": "user", "content": format!("{TOOL_RESULT_MARKER} {}", m.content) }),
+            Role::Tool => {
+                json!({ "role": "user", "content": format!("{TOOL_RESULT_MARKER} {}", m.content) })
+            }
         })
         .collect();
     let mut body = json!({
@@ -126,7 +140,10 @@ pub fn build_body(model: &str, req: &CompletionRequest) -> Value {
 /// Native tool calls first; otherwise a `TOOL_CALL:` text line; otherwise
 /// the plain answer.
 pub fn parse_response(value: &Value, tools: &[ToolSpec]) -> CompletionResponse {
-    let msg = value.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
+    let msg = value
+        .pointer("/choices/0/message")
+        .cloned()
+        .unwrap_or(Value::Null);
     let content = strip_reasoning(msg.get("content").and_then(Value::as_str).unwrap_or(""));
     let original = |wire: &str| {
         tools
@@ -153,7 +170,10 @@ pub fn parse_response(value: &Value, tools: &[ToolSpec]) -> CompletionResponse {
         .collect();
     if !native.is_empty() {
         let names: Vec<&str> = native.iter().map(|c| c.name.as_str()).collect();
-        return CompletionResponse { content: format!("calling {}", names.join(", ")), tool_calls: native };
+        return CompletionResponse {
+            content: format!("calling {}", names.join(", ")),
+            tool_calls: native,
+        };
     }
 
     let cleaned = clean_tool_call(&content);
@@ -163,11 +183,17 @@ pub fn parse_response(value: &Value, tools: &[ToolSpec]) -> CompletionResponse {
         if let Ok(args) = serde_json::from_str::<Value>(args.trim()) {
             return CompletionResponse {
                 content: format!("calling {name}"),
-                tool_calls: vec![ToolCall { name: original(name), args }],
+                tool_calls: vec![ToolCall {
+                    name: original(name),
+                    args,
+                }],
             };
         }
     }
-    CompletionResponse { content: cleaned, tool_calls: vec![] }
+    CompletionResponse {
+        content: cleaned,
+        tool_calls: vec![],
+    }
 }
 
 /// Set to print each raw model response summary to stderr.
@@ -234,7 +260,9 @@ impl ModelProvider for OpenAiCompatModel {
                 Err((host, reason)) => {
                     failed_hosts.extend(host);
                     if std::env::var(DEBUG_ENV).is_ok() {
-                        eprintln!("[{DEBUG_ENV}] attempt {attempt}/{MAX_ATTEMPTS} failed: {reason}");
+                        eprintln!(
+                            "[{DEBUG_ENV}] attempt {attempt}/{MAX_ATTEMPTS} failed: {reason}"
+                        );
                     }
                     last_err = Some(reason);
                 }
@@ -255,17 +283,28 @@ impl OpenAiCompatModel {
         self.base_url.contains("openrouter.ai")
     }
 
-    async fn send(&self, body: &Value) -> Result<std::result::Result<Value, (Option<String>, String)>> {
-        let mut call = self.client.post(format!("{}/chat/completions", self.base_url)).json(body);
+    async fn send(
+        &self,
+        body: &Value,
+    ) -> Result<std::result::Result<Value, (Option<String>, String)>> {
+        let mut call = self
+            .client
+            .post(format!("{}/chat/completions", self.base_url))
+            .json(body);
         if let Some(key) = &self.api_key {
             call = call.bearer_auth(key);
         }
-        let resp = call
-            .send()
-            .await
-            .with_context(|| format!("request to {} failed; is the model server running?", self.base_url))?;
+        let resp = call.send().await.with_context(|| {
+            format!(
+                "request to {} failed; is the model server running?",
+                self.base_url
+            )
+        })?;
         let status = resp.status();
-        let value: Value = resp.json().await.context("model server returned non-JSON")?;
+        let value: Value = resp
+            .json()
+            .await
+            .context("model server returned non-JSON")?;
         if !status.is_success() {
             anyhow::bail!("model server returned {status}: {value}");
         }
@@ -281,7 +320,10 @@ impl OpenAiCompatModel {
                 value.get("provider").unwrap_or(&Value::Null),
             );
         }
-        let host = value.get("provider").and_then(Value::as_str).map(str::to_string);
+        let host = value
+            .get("provider")
+            .and_then(Value::as_str)
+            .map(str::to_string);
         Ok(generation_failure(&value).map_or(Ok(value), |reason| Err((host, reason))))
     }
 }
@@ -291,17 +333,38 @@ pub fn generation_failure(value: &Value) -> Option<String> {
     let Some(choice) = value.pointer("/choices/0") else {
         return Some(format!("no choices in response: {value}"));
     };
-    let finish = choice.get("finish_reason").and_then(Value::as_str).unwrap_or("");
-    let content = choice.pointer("/message/content").and_then(Value::as_str).unwrap_or("");
-    let has_calls = choice.pointer("/message/tool_calls").and_then(Value::as_array).is_some_and(|c| !c.is_empty());
-    let provider = value.get("provider").and_then(Value::as_str).unwrap_or("unknown host");
+    let finish = choice
+        .get("finish_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let content = choice
+        .pointer("/message/content")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let has_calls = choice
+        .pointer("/message/tool_calls")
+        .and_then(Value::as_array)
+        .is_some_and(|c| !c.is_empty());
+    let provider = value
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown host");
     if finish == "error" {
-        let detail = choice.get("error").map(|e| e.to_string()).unwrap_or_else(|| "no detail".into());
+        let detail = choice
+            .get("error")
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "no detail".into());
         return Some(format!("{provider} reported a generation error ({detail})"));
     }
     if content.trim().is_empty() && !has_calls {
-        let hint = if finish == "length" { "; it ran out of tokens while reasoning" } else { "" };
-        return Some(format!("{provider} returned an empty answer (finish_reason {finish:?}){hint}"));
+        let hint = if finish == "length" {
+            "; it ran out of tokens while reasoning"
+        } else {
+            ""
+        };
+        return Some(format!(
+            "{provider} returned an empty answer (finish_reason {finish:?}){hint}"
+        ));
     }
     None
 }
@@ -316,31 +379,55 @@ mod tests {
     fn clean_tool_call_keeps_one_call_and_drops_invented_results() {
         let q = r#"{"question":"How many ADUs?"}"#;
         // Repeated on one line, then a fabricated result (observed from gpt-oss-120b).
-        let raw = format!("TOOL_CALL: consult.adu {q}[TOOL RESULT] about 45,000 ADUs\nTOOL_CALL: consult.adu {q}");
+        let raw = format!(
+            "TOOL_CALL: consult.adu {q}[TOOL RESULT] about 45,000 ADUs\nTOOL_CALL: consult.adu {q}"
+        );
         assert_eq!(clean_tool_call(&raw), format!("TOOL_CALL: consult.adu {q}"));
-        assert_eq!(clean_tool_call(&format!("Sure.\nTOOL_CALL: consult.fees{q} trailing")), format!("TOOL_CALL: consult.fees {q}"));
-        assert_eq!(clean_tool_call("TOOL_CALL: ontology.get"), "TOOL_CALL: ontology.get {}");
+        assert_eq!(
+            clean_tool_call(&format!("Sure.\nTOOL_CALL: consult.fees{q} trailing")),
+            format!("TOOL_CALL: consult.fees {q}")
+        );
+        assert_eq!(
+            clean_tool_call("TOOL_CALL: ontology.get"),
+            "TOOL_CALL: ontology.get {}"
+        );
         assert_eq!(clean_tool_call("A plain answer."), "A plain answer.");
     }
 
     fn specs() -> Vec<ToolSpec> {
         vec![
-            ToolSpec { name: "adu.evidence_brief".into(), description: "Evidence for {query}.".into() },
-            ToolSpec { name: "adu.find_datasets".into(), description: "Datasets; set {usable_only}.".into() },
+            ToolSpec {
+                name: "adu.evidence_brief".into(),
+                description: "Evidence for {query}.".into(),
+            },
+            ToolSpec {
+                name: "adu.find_datasets".into(),
+                description: "Datasets; set {usable_only}.".into(),
+            },
         ]
     }
 
     #[test]
     fn body_declares_tools_as_native_functions() {
         let req = CompletionRequest {
-            messages: vec![Message::system("s"), Message::user("q"), Message::tool("42")],
+            messages: vec![
+                Message::system("s"),
+                Message::user("q"),
+                Message::tool("42"),
+            ],
             tools: specs(),
             temperature: 0.0,
         };
         let body = build_body("openai/gpt-oss-20b", &req);
         assert_eq!(body["tools"][0]["function"]["name"], "adu__evidence_brief");
-        assert_eq!(body["tools"][0]["function"]["parameters"]["required"][0], "query");
-        assert_eq!(body["tools"][1]["function"]["parameters"]["properties"]["usable_only"]["type"], "boolean");
+        assert_eq!(
+            body["tools"][0]["function"]["parameters"]["required"][0],
+            "query"
+        );
+        assert_eq!(
+            body["tools"][1]["function"]["parameters"]["properties"]["usable_only"]["type"],
+            "boolean"
+        );
         assert_eq!(body["tool_choice"], "auto");
         assert_eq!(body["messages"][2]["role"], "user");
         assert_eq!(body["messages"][2]["content"], "[TOOL RESULT] 42");
@@ -350,7 +437,10 @@ mod tests {
     fn native_tool_calls_map_back_to_condesate_names() {
         let v = serde_json::json!({"choices":[{"finish_reason":"tool_calls","message":{"content":null,
             "tool_calls":[{"id":"1","type":"function","function":{"name":"adu__evidence_brief","arguments":"{\"query\":\"permits\"}"}}]}}]});
-        assert!(generation_failure(&v).is_none(), "a tool call with no text is not a failure");
+        assert!(
+            generation_failure(&v).is_none(),
+            "a tool call with no text is not a failure"
+        );
         let out = parse_response(&v, &specs());
         assert_eq!(out.tool_calls.len(), 1);
         assert_eq!(out.tool_calls[0].name, "adu.evidence_brief");
@@ -373,15 +463,25 @@ mod tests {
         assert!(generation_failure(&ok).is_none());
         // Observed from OpenRouter: HTTP 200, finish_reason "error", null content.
         let err = json!({"provider":"Groq","choices":[{"finish_reason":"error","message":{"content":null}}]});
-        assert!(generation_failure(&err).unwrap().contains("Groq reported a generation error"));
+        assert!(generation_failure(&err)
+            .unwrap()
+            .contains("Groq reported a generation error"));
         let empty = json!({"choices":[{"finish_reason":"length","message":{"content":""}}]});
-        assert!(generation_failure(&empty).unwrap().contains("ran out of tokens"));
+        assert!(generation_failure(&empty)
+            .unwrap()
+            .contains("ran out of tokens"));
     }
 
     #[test]
     fn strip_reasoning_removes_think_blocks() {
-        assert_eq!(strip_reasoning("<think>TOOL_CALL: x {}</think>\nAnswer"), "Answer");
-        assert_eq!(strip_reasoning("a<think>b</think>c<think>d</think>e"), "ace");
+        assert_eq!(
+            strip_reasoning("<think>TOOL_CALL: x {}</think>\nAnswer"),
+            "Answer"
+        );
+        assert_eq!(
+            strip_reasoning("a<think>b</think>c<think>d</think>e"),
+            "ace"
+        );
         assert_eq!(strip_reasoning("no reasoning"), "no reasoning");
         assert_eq!(strip_reasoning("<think>unterminated"), "");
     }
@@ -400,7 +500,11 @@ mod tests {
                 if let Some(i) = req.find("\r\n\r\n") {
                     let len: usize = req
                         .lines()
-                        .find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap()))
+                        .find_map(|l| {
+                            l.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|v| v.trim().parse().unwrap())
+                        })
                         .unwrap_or(0);
                     if req.len() >= i + 4 + len {
                         break;
@@ -419,16 +523,25 @@ mod tests {
 
     #[tokio::test]
     async fn posts_to_chat_completions_with_the_registry_tag() {
-        let (url, server) =
-            mock_server(r#"{"choices":[{"message":{"role":"assistant","content":"<think>hmm</think>Hello"}}]}"#).await;
+        let (url, server) = mock_server(
+            r#"{"choices":[{"message":{"role":"assistant","content":"<think>hmm</think>Hello"}}]}"#,
+        )
+        .await;
         let model = OpenAiCompatModel::new(&url, "qwen3:4b", Some("k".into()));
-        let req = CompletionRequest { messages: vec![Message::user("hi")], tools: vec![], temperature: 0.0 };
+        let req = CompletionRequest {
+            messages: vec![Message::user("hi")],
+            tools: vec![],
+            temperature: 0.0,
+        };
         let out = model.complete(req).await.unwrap();
         assert_eq!(out.content, "Hello");
         let raw = server.await.unwrap();
         assert!(raw.starts_with("POST /v1/chat/completions"), "{raw}");
         assert!(raw.contains("\"model\":\"qwen3:4b\""));
         assert!(raw.to_lowercase().contains("authorization: bearer k"));
-        assert!(raw.contains(r#""stop":["[TOOL RESULT]"]"#), "stop sequence must be sent");
+        assert!(
+            raw.contains(r#""stop":["[TOOL RESULT]"]"#),
+            "stop sequence must be sent"
+        );
     }
 }

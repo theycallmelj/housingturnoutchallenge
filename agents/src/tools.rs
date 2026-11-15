@@ -19,9 +19,18 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 /// The tools one domain expert may call.
 pub fn domain_tools(ontology: &'static Ontology, domain: &str) -> Vec<Arc<dyn Tool>> {
     vec![
-        Arc::new(EvidenceBrief { ontology, domain: domain.to_string() }),
-        Arc::new(FindStudies { ontology, domain: domain.to_string() }),
-        Arc::new(FindDatasets { ontology, domain: domain.to_string() }),
+        Arc::new(EvidenceBrief {
+            ontology,
+            domain: domain.to_string(),
+        }),
+        Arc::new(FindStudies {
+            ontology,
+            domain: domain.to_string(),
+        }),
+        Arc::new(FindDatasets {
+            ontology,
+            domain: domain.to_string(),
+        }),
         Arc::new(GetEntity { ontology }),
         Arc::new(StateProfile),
         Arc::new(ScaleRate),
@@ -119,7 +128,9 @@ impl Tool for FindStudies {
     async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
         let query = str_arg(&args, "query").unwrap_or("");
         let scenario = str_arg(&args, "scenario");
-        let studies = self.ontology.find_studies(Some(&self.domain), scenario, query, 6);
+        let studies = self
+            .ontology
+            .find_studies(Some(&self.domain), scenario, query, 6);
         if studies.is_empty() {
             return Ok("no matching studies".into());
         }
@@ -149,8 +160,13 @@ impl Tool for FindDatasets {
         }
     }
     async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
-        let usable_only = args.get("usable_only").and_then(Value::as_bool).unwrap_or(false);
-        let datasets = self.ontology.find_datasets(Some(&self.domain), None, usable_only);
+        let usable_only = args
+            .get("usable_only")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let datasets = self
+            .ontology
+            .find_datasets(Some(&self.domain), None, usable_only);
         Ok(datasets
             .into_iter()
             .map(|d| self.ontology.format_dataset(d))
@@ -174,6 +190,8 @@ impl Tool for GetEntity {
     }
     async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
         let id = str_arg(&args, "id").ok_or_else(|| anyhow!("missing string arg 'id'"))?;
-        self.ontology.describe(id).ok_or_else(|| anyhow!("no entity with id '{id}'"))
+        self.ontology
+            .describe(id)
+            .ok_or_else(|| anyhow!("no entity with id '{id}'"))
     }
 }

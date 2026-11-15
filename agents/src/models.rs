@@ -41,7 +41,10 @@ pub const EXPERT_ENV: &str = "HOUSING_EXPERT_MODEL";
 pub const EXPERT_DOMAIN_ENV_PREFIX: &str = "HOUSING_EXPERT_MODEL_";
 
 fn assistant_turns(req: &CompletionRequest) -> usize {
-    req.messages.iter().filter(|m| m.role == Role::Assistant).count()
+    req.messages
+        .iter()
+        .filter(|m| m.role == Role::Assistant)
+        .count()
 }
 
 fn last_user(req: &CompletionRequest) -> String {
@@ -109,12 +112,22 @@ impl ModelProvider for OfflineExpertModel {
                 args: json!({ "query": question }),
             }];
             if let Some(s) = state {
-                calls.push(ToolCall { name: "state.profile".into(), args: json!({ "state": s.abbr }) });
+                calls.push(ToolCall {
+                    name: "state.profile".into(),
+                    args: json!({ "state": s.abbr }),
+                });
             }
-            return Ok(CompletionResponse { content: format!("Pulling the {} evidence brief.", self.domain), tool_calls: calls });
+            return Ok(CompletionResponse {
+                content: format!("Pulling the {} evidence brief.", self.domain),
+                tool_calls: calls,
+            });
         }
         let results = tool_results(&req);
-        let brief = results.iter().find(|r| r.starts_with("DOMAIN ")).cloned().unwrap_or_default();
+        let brief = results
+            .iter()
+            .find(|r| r.starts_with("DOMAIN "))
+            .cloned()
+            .unwrap_or_default();
         let mut out = condense_brief(&brief, 4);
         if let Some(s) = state {
             out.push_str(&format!(
@@ -123,7 +136,10 @@ impl ModelProvider for OfflineExpertModel {
             ));
         }
         out.push_str("\nEach figure applies only to its own outcome measure and setting; treat them as comparison cases, not a forecast.");
-        Ok(CompletionResponse { content: out, tool_calls: vec![] })
+        Ok(CompletionResponse {
+            content: out,
+            tool_calls: vec![],
+        })
     }
 }
 
@@ -182,8 +198,13 @@ impl ModelProvider for OfflineOrchestratorModel {
         if domains.len() > 1 {
             out.push_str("\n## Combining these\nThe experts' estimates use different outcome measures and settings. Don't add them together; policy effects interact (see the modeling domain, e.g. kulka_sood_chiumenti_2026).\n");
         }
-        out.push_str(&format!("\n## What this cannot tell you\n{STANDING_LIMITS}\n"));
-        Ok(CompletionResponse { content: out, tool_calls: vec![] })
+        out.push_str(&format!(
+            "\n## What this cannot tell you\n{STANDING_LIMITS}\n"
+        ));
+        Ok(CompletionResponse {
+            content: out,
+            tool_calls: vec![],
+        })
     }
 }
 
@@ -229,13 +250,20 @@ impl Registry {
     pub fn bundled() -> &'static Registry {
         use std::sync::OnceLock;
         static REG: OnceLock<Registry> = OnceLock::new();
-        REG.get_or_init(|| serde_json::from_str(REGISTRY).expect("bundled model registry must parse"))
+        REG.get_or_init(|| {
+            serde_json::from_str(REGISTRY).expect("bundled model registry must parse")
+        })
     }
 
     /// A model the panel may run, or an error explaining why not.
     pub fn allowed(&self, id: &str) -> Result<&ModelSpec> {
         if let Some(r) = self.rejected.iter().find(|r| r.id == id) {
-            bail!("model '{id}' is not allowed: license {} ({}); only {} models may be used", r.license, r.reason, self.required_license);
+            bail!(
+                "model '{id}' is not allowed: license {} ({}); only {} models may be used",
+                r.license,
+                r.reason,
+                self.required_license
+            );
         }
         let m = self
             .models
@@ -243,7 +271,11 @@ impl Registry {
             .find(|m| m.id == id)
             .ok_or_else(|| anyhow!("model '{id}' is not in agents/model-registry.json"))?;
         if m.license != self.required_license {
-            bail!("model '{id}' has license {}, but {} is required", m.license, self.required_license);
+            bail!(
+                "model '{id}' has license {}, but {} is required",
+                m.license,
+                self.required_license
+            );
         }
         Ok(m)
     }
@@ -309,23 +341,38 @@ impl Host {
 pub enum Backend {
     Offline,
     /// An OpenAI-compatible chat completions server. Needs the `llm` feature.
-    OpenAiCompat { host: Host, base_url: String, api_key: Option<String> },
+    OpenAiCompat {
+        host: Host,
+        base_url: String,
+        api_key: Option<String>,
+    },
 }
 
 impl Backend {
     /// `OpenAiCompat` when a base URL is set or the host has a default one
     /// (OpenRouter); otherwise `Offline`.
     pub fn from_env() -> Result<Self> {
-        let var = |k: &str| std::env::var(k).ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+        let var = |k: &str| {
+            std::env::var(k)
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+        };
         let host = Host::parse(&var(HOST_ENV).unwrap_or_default())?;
-        let Some(base_url) = var(BASE_URL_ENV).or_else(|| host.default_base_url().map(str::to_string)) else {
+        let Some(base_url) =
+            var(BASE_URL_ENV).or_else(|| host.default_base_url().map(str::to_string))
+        else {
             return Ok(Backend::Offline);
         };
         let mut api_key = var(API_KEY_ENV);
         if host == Host::OpenRouter {
             api_key = api_key.or_else(|| var(OPENROUTER_KEY_ENV));
         }
-        Ok(Backend::OpenAiCompat { host, base_url: base_url.trim_end_matches('/').to_string(), api_key })
+        Ok(Backend::OpenAiCompat {
+            host,
+            base_url: base_url.trim_end_matches('/').to_string(),
+            api_key,
+        })
     }
 
     pub fn host(&self) -> Option<Host> {
@@ -358,7 +405,12 @@ impl ModelPlan {
         domains: &[&str],
     ) -> Result<Self> {
         let host = backend.host();
-        if let Backend::OpenAiCompat { host: Host::OpenRouter, api_key: None, .. } = &backend {
+        if let Backend::OpenAiCompat {
+            host: Host::OpenRouter,
+            api_key: None,
+            ..
+        } = &backend
+        {
             bail!("OpenRouter needs an API key: set {API_KEY_ENV} or {OPENROUTER_KEY_ENV}");
         }
         let profile_name = profile
@@ -366,7 +418,15 @@ impl ModelPlan {
             .unwrap_or(&registry.default_profile)
             .to_string();
         let p = registry.profiles.get(&profile_name).ok_or_else(|| {
-            anyhow!("unknown model profile '{profile_name}'; expected one of: {}", registry.profiles.keys().cloned().collect::<Vec<_>>().join(", "))
+            anyhow!(
+                "unknown model profile '{profile_name}'; expected one of: {}",
+                registry
+                    .profiles
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         })?;
         let served = |m: &ModelSpec| -> Result<()> {
             match host {
@@ -389,7 +449,10 @@ impl ModelPlan {
         }
         let mut experts = BTreeMap::new();
         for d in domains {
-            let id = per_domain.get(*d).map(String::as_str).unwrap_or(default_expert);
+            let id = per_domain
+                .get(*d)
+                .map(String::as_str)
+                .unwrap_or(default_expert);
             let m = registry.allowed(id)?.clone();
             served(&m)?;
             if m.capability_rank >= leader.capability_rank {
@@ -400,7 +463,12 @@ impl ModelPlan {
             }
             experts.insert(d.to_string(), m);
         }
-        Ok(Self { backend, profile: profile_name, leader, experts })
+        Ok(Self {
+            backend,
+            profile: profile_name,
+            leader,
+            experts,
+        })
     }
 
     /// Resolve from `HOUSING_*` environment variables.
@@ -408,7 +476,10 @@ impl ModelPlan {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
         let per_domain: BTreeMap<String, String> = domains
             .iter()
-            .filter_map(|d| var(&format!("{EXPERT_DOMAIN_ENV_PREFIX}{}", d.to_uppercase())).map(|m| (d.to_string(), m)))
+            .filter_map(|d| {
+                var(&format!("{EXPERT_DOMAIN_ENV_PREFIX}{}", d.to_uppercase()))
+                    .map(|m| (d.to_string(), m))
+            })
             .collect();
         Self::resolve(
             Registry::bundled(),
@@ -423,22 +494,41 @@ impl ModelPlan {
 
     /// The offline plan: registry defaults, used only for labels.
     pub fn offline(domains: &[&str]) -> Self {
-        Self::resolve(Registry::bundled(), Backend::Offline, None, None, None, &BTreeMap::new(), domains)
-            .expect("default profile must be valid")
+        Self::resolve(
+            Registry::bundled(),
+            Backend::Offline,
+            None,
+            None,
+            None,
+            &BTreeMap::new(),
+            domains,
+        )
+        .expect("default profile must be valid")
     }
 
     /// The name the configured host uses for `spec` (the registry id offline).
     pub fn served_id<'a>(&self, spec: &'a ModelSpec) -> &'a str {
-        self.backend.host().and_then(|h| h.model_id(spec)).unwrap_or(&spec.id)
+        self.backend
+            .host()
+            .and_then(|h| h.model_id(spec))
+            .unwrap_or(&spec.id)
     }
 
-    fn provider(&self, spec: &ModelSpec, offline: Arc<dyn ModelProvider>) -> Result<Arc<dyn ModelProvider>> {
+    fn provider(
+        &self,
+        spec: &ModelSpec,
+        offline: Arc<dyn ModelProvider>,
+    ) -> Result<Arc<dyn ModelProvider>> {
         match &self.backend {
             Backend::Offline => Ok(offline),
             #[cfg(feature = "llm")]
-            Backend::OpenAiCompat { base_url, api_key, .. } => {
-                Ok(Arc::new(crate::openai_compat::OpenAiCompatModel::new(base_url, self.served_id(spec), api_key.clone())))
-            }
+            Backend::OpenAiCompat {
+                base_url, api_key, ..
+            } => Ok(Arc::new(crate::openai_compat::OpenAiCompatModel::new(
+                base_url,
+                self.served_id(spec),
+                api_key.clone(),
+            ))),
             #[cfg(not(feature = "llm"))]
             Backend::OpenAiCompat { .. } => {
                 let _ = spec;
@@ -447,23 +537,49 @@ impl ModelPlan {
         }
     }
 
-    pub fn leader_provider(&self, offline: Arc<dyn ModelProvider>) -> Result<Arc<dyn ModelProvider>> {
+    pub fn leader_provider(
+        &self,
+        offline: Arc<dyn ModelProvider>,
+    ) -> Result<Arc<dyn ModelProvider>> {
         self.provider(&self.leader, offline)
     }
 
-    pub fn expert_provider(&self, domain: &str, offline: Arc<dyn ModelProvider>) -> Result<Arc<dyn ModelProvider>> {
-        let spec = self.experts.get(domain).ok_or_else(|| anyhow!("no expert model for domain '{domain}'"))?;
+    pub fn expert_provider(
+        &self,
+        domain: &str,
+        offline: Arc<dyn ModelProvider>,
+    ) -> Result<Arc<dyn ModelProvider>> {
+        let spec = self
+            .experts
+            .get(domain)
+            .ok_or_else(|| anyhow!("no expert model for domain '{domain}'"))?;
         self.provider(spec, offline)
     }
 
     /// The model class recorded in an agent's manifest, and so in the audit trail.
     pub fn model_class(&self, domain: Option<&str>) -> ModelClass {
-        let spec = domain.and_then(|d| self.experts.get(d)).unwrap_or(&self.leader);
+        let spec = domain
+            .and_then(|d| self.experts.get(d))
+            .unwrap_or(&self.leader);
         let (provider, family, revision) = match self.backend {
-            Backend::Offline => ("offline".to_string(), "deterministic".to_string(), env!("CARGO_PKG_VERSION").to_string()),
-            Backend::OpenAiCompat { host, .. } => (host.name().to_string(), spec.family.clone(), self.served_id(spec).to_string()),
+            Backend::Offline => (
+                "offline".to_string(),
+                "deterministic".to_string(),
+                env!("CARGO_PKG_VERSION").to_string(),
+            ),
+            Backend::OpenAiCompat { host, .. } => (
+                host.name().to_string(),
+                spec.family.clone(),
+                self.served_id(spec).to_string(),
+            ),
         };
-        ModelClass { provider, family, revision, embedding_space: None, quantization: None }
+        ModelClass {
+            provider,
+            family,
+            revision,
+            embedding_space: None,
+            quantization: None,
+        }
     }
 
     pub fn is_offline(&self) -> bool {
@@ -475,7 +591,13 @@ impl ModelPlan {
             return format!("offline deterministic models (set {BASE_URL_ENV} to use the '{}' open-model profile)", self.profile);
         }
         let host = self.backend.host().map_or("offline", Host::name);
-        let mut out = format!("{host} profile {}: leader {} ({}, {})", self.profile, self.leader.id, self.served_id(&self.leader), self.leader.license);
+        let mut out = format!(
+            "{host} profile {}: leader {} ({}, {})",
+            self.profile,
+            self.leader.id,
+            self.served_id(&self.leader),
+            self.leader.license
+        );
         for (d, m) in &self.experts {
             out.push_str(&format!("; {d} {}", m.id));
         }
@@ -489,7 +611,9 @@ mod tests {
 
     #[test]
     fn condense_brief_keeps_scenarios_studies_and_dataset_verdicts() {
-        let brief = Ontology::bundled().evidence_brief("adu", "permits", 8).unwrap();
+        let brief = Ontology::bundled()
+            .evidence_brief("adu", "permits", 8)
+            .unwrap();
         let short = condense_brief(&brief, 2);
         assert!(short.contains("SCENARIO"));
         assert_eq!(short.lines().filter(|l| l.starts_with('[')).count(), 2);
@@ -499,9 +623,24 @@ mod tests {
 
     const DOMAINS: &[&str] = &["adu", "fees"];
 
-    fn resolve(leader: Option<&str>, expert: Option<&str>, per: &[(&str, &str)]) -> Result<ModelPlan> {
-        let per: BTreeMap<String, String> = per.iter().map(|(d, m)| (d.to_string(), m.to_string())).collect();
-        ModelPlan::resolve(Registry::bundled(), Backend::Offline, None, leader, expert, &per, DOMAINS)
+    fn resolve(
+        leader: Option<&str>,
+        expert: Option<&str>,
+        per: &[(&str, &str)],
+    ) -> Result<ModelPlan> {
+        let per: BTreeMap<String, String> = per
+            .iter()
+            .map(|(d, m)| (d.to_string(), m.to_string()))
+            .collect();
+        ModelPlan::resolve(
+            Registry::bundled(),
+            Backend::Offline,
+            None,
+            leader,
+            expert,
+            &per,
+            DOMAINS,
+        )
     }
 
     #[test]
@@ -509,26 +648,49 @@ mod tests {
         let reg = Registry::bundled();
         assert_eq!(reg.required_license, "Apache-2.0");
         assert!(reg.models.iter().all(|m| m.license == "Apache-2.0"));
-        assert!(reg.rejected.iter().all(|r| reg.models.iter().all(|m| m.id != r.id)));
+        assert!(reg
+            .rejected
+            .iter()
+            .all(|r| reg.models.iter().all(|m| m.id != r.id)));
         for name in reg.profiles.keys() {
-            ModelPlan::resolve(reg, Backend::Offline, Some(name), None, None, &BTreeMap::new(), DOMAINS)
-                .unwrap_or_else(|e| panic!("profile {name}: {e}"));
+            ModelPlan::resolve(
+                reg,
+                Backend::Offline,
+                Some(name),
+                None,
+                None,
+                &BTreeMap::new(),
+                DOMAINS,
+            )
+            .unwrap_or_else(|e| panic!("profile {name}: {e}"));
         }
     }
 
     #[test]
     fn non_apache_models_are_refused_with_their_license() {
-        let err = resolve(None, Some("llama-3.1-8b"), &[]).unwrap_err().to_string();
-        assert!(err.contains("llama3.1") && err.contains("Apache-2.0"), "{err}");
+        let err = resolve(None, Some("llama-3.1-8b"), &[])
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("llama3.1") && err.contains("Apache-2.0"),
+            "{err}"
+        );
         assert!(resolve(Some("claude"), None, &[]).is_err());
         assert!(resolve(None, Some("not-a-model"), &[]).is_err());
     }
 
     #[test]
     fn leader_must_outrank_every_expert() {
-        let err = resolve(Some("qwen3-8b"), Some("qwen3-8b"), &[]).unwrap_err().to_string();
+        let err = resolve(Some("qwen3-8b"), Some("qwen3-8b"), &[])
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("must be stronger"), "{err}");
-        assert!(resolve(Some("qwen3-4b"), Some("qwen3-1.7b"), &[("fees", "qwen3-14b")]).is_err());
+        assert!(resolve(
+            Some("qwen3-4b"),
+            Some("qwen3-1.7b"),
+            &[("fees", "qwen3-14b")]
+        )
+        .is_err());
     }
 
     fn openrouter(key: Option<&str>) -> Backend {
@@ -541,7 +703,16 @@ mod tests {
 
     #[test]
     fn openrouter_defaults_to_its_profile_and_uses_openrouter_ids() {
-        let plan = ModelPlan::resolve(Registry::bundled(), openrouter(Some("k")), None, None, None, &BTreeMap::new(), DOMAINS).unwrap();
+        let plan = ModelPlan::resolve(
+            Registry::bundled(),
+            openrouter(Some("k")),
+            None,
+            None,
+            None,
+            &BTreeMap::new(),
+            DOMAINS,
+        )
+        .unwrap();
         assert_eq!(plan.profile, "openrouter");
         assert_eq!(plan.served_id(&plan.leader), "openai/gpt-oss-120b");
         assert_eq!(plan.served_id(&plan.experts["adu"]), "openai/gpt-oss-20b");
@@ -550,13 +721,29 @@ mod tests {
 
     #[test]
     fn openrouter_refuses_models_it_does_not_serve_and_missing_keys() {
-        let err = ModelPlan::resolve(Registry::bundled(), openrouter(Some("k")), Some("laptop"), None, None, &BTreeMap::new(), DOMAINS)
-            .unwrap_err()
-            .to_string();
+        let err = ModelPlan::resolve(
+            Registry::bundled(),
+            openrouter(Some("k")),
+            Some("laptop"),
+            None,
+            None,
+            &BTreeMap::new(),
+            DOMAINS,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("not available on openrouter"), "{err}");
-        let err = ModelPlan::resolve(Registry::bundled(), openrouter(None), None, None, None, &BTreeMap::new(), DOMAINS)
-            .unwrap_err()
-            .to_string();
+        let err = ModelPlan::resolve(
+            Registry::bundled(),
+            openrouter(None),
+            None,
+            None,
+            None,
+            &BTreeMap::new(),
+            DOMAINS,
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("API key"), "{err}");
     }
 
@@ -571,7 +758,12 @@ mod tests {
 
     #[test]
     fn per_domain_overrides_give_experts_different_models() {
-        let plan = resolve(Some("qwen3-32b"), Some("qwen3-8b"), &[("adu", "granite-3.3-8b")]).unwrap();
+        let plan = resolve(
+            Some("qwen3-32b"),
+            Some("qwen3-8b"),
+            &[("adu", "granite-3.3-8b")],
+        )
+        .unwrap();
         assert_eq!(plan.experts["adu"].id, "granite-3.3-8b");
         assert_eq!(plan.experts["fees"].id, "qwen3-8b");
         assert_eq!(plan.leader.id, "qwen3-32b");

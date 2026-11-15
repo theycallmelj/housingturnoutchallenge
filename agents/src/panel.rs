@@ -18,10 +18,10 @@ use crate::tools::domain_tools;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use condesate::{
-    Action, Agent, AgentContext, AgentLoop, AgentManifest, BasicAgent, Bus,
-    GrantSet, GuardedServices, HarnessId, InMemoryStorage, Kernel, MemoryAudit, Message,
-    Pattern, ReActLoop, ResourcePattern, Rule, RuleSetPolicy, ServiceHandle, Storage,
-    SubjectMatch, SystemClock, TenantId, Tool, ToolSpec, TrustTier,
+    Action, Agent, AgentContext, AgentLoop, AgentManifest, BasicAgent, Bus, GrantSet,
+    GuardedServices, HarnessId, InMemoryStorage, Kernel, MemoryAudit, Message, Pattern, ReActLoop,
+    ResourcePattern, Rule, RuleSetPolicy, ServiceHandle, Storage, SubjectMatch, SystemClock,
+    TenantId, Tool, ToolSpec, TrustTier,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -37,7 +37,12 @@ fn expert_name(domain: &str) -> String {
 /// Everything any principal in the panel may ever hold.
 fn root_grants() -> GrantSet {
     GrantSet::new(vec![
-        Rule::allow("tools", SubjectMatch::default(), &[Action::Invoke], ResourcePattern::Tool(Pattern::Any)),
+        Rule::allow(
+            "tools",
+            SubjectMatch::default(),
+            &[Action::Invoke],
+            ResourcePattern::Tool(Pattern::Any),
+        ),
         Rule::allow(
             "findings",
             SubjectMatch::default(),
@@ -200,26 +205,45 @@ impl Tool for ConsultExpert {
             .ok_or_else(|| anyhow!("missing string arg 'question'"))?;
         let name = expert_name(&self.domain);
         let child = svc
-            .spawn_child(&expert_manifest(&self.domain, &self.plan), raw_services(&name, self.storage.clone()))
+            .spawn_child(
+                &expert_manifest(&self.domain, &self.plan),
+                raw_services(&name, self.storage.clone()),
+            )
             .await
             .map_err(|r| anyhow!("spawn of {name} refused: {r}"))?;
         child.begin_activation(format!("{name}:{question}"), 1024 * 1024);
 
         let mut ctx = AgentContext::new(Arc::new(child));
         ctx.transcript.push(Message::user(question.to_string()));
-        let outcome = ReActLoop { max_steps: 6 }.run(self.agent.as_ref(), &mut ctx).await?;
+        let outcome = ReActLoop { max_steps: 6 }
+            .run(self.agent.as_ref(), &mut ctx)
+            .await?;
         // An expert that never called a tool is answering from memory.
-        let grounded = ctx.transcript.iter().any(|m| m.role == condesate::Role::Tool);
-        let answer = if grounded { outcome.final_text } else { EXPERT_UNGROUNDED.to_string() };
+        let grounded = ctx
+            .transcript
+            .iter()
+            .any(|m| m.role == condesate::Role::Tool);
+        let answer = if grounded {
+            outcome.final_text
+        } else {
+            EXPERT_UNGROUNDED.to_string()
+        };
         ctx.services
             .storage_set(&format!("findings/{}/answer", self.domain), &answer)
             .await?;
         // Keep what the tools actually returned, so the citation check can
         // tell tool-sourced figures from figures the model introduced.
-        let tool_output: Vec<&str> =
-            ctx.transcript.iter().filter(|m| m.role == condesate::Role::Tool).map(|m| m.content.as_str()).collect();
+        let tool_output: Vec<&str> = ctx
+            .transcript
+            .iter()
+            .filter(|m| m.role == condesate::Role::Tool)
+            .map(|m| m.content.as_str())
+            .collect();
         ctx.services
-            .storage_set(&format!("findings/{}/tool_output", self.domain), &tool_output.join("\n"))
+            .storage_set(
+                &format!("findings/{}/tool_output", self.domain),
+                &tool_output.join("\n"),
+            )
             .await?;
         Ok(answer)
     }
@@ -327,29 +351,52 @@ pub fn check_citations(ontology: &Ontology, text: &str, allowed: &[String]) -> V
         if cited.is_empty() {
             // No study named: a figure is still suspect if no tool produced it.
             for n in numbers(line) {
-                let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
-                let small_ordinal = n.parse::<f64>().is_ok_and(|v| v <= 10.0 && v.fract() == 0.0);
+                let is_year =
+                    n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
+                let small_ordinal = n
+                    .parse::<f64>()
+                    .is_ok_and(|v| v <= 10.0 && v.fract() == 0.0);
                 // Rate denominators ("per 100,000", "100 k") aren't claims.
                 let denominator = matches!(n.as_str(), "100" | "1000" | "100000");
-                if !is_year && !small_ordinal && !denominator && !allowed.contains(&n) && !allowed.is_empty() {
-                    issues.push(format!("figure {n} (\"{}\") did not come from any tool output in this run", line.trim().chars().take(80).collect::<String>()));
+                if !is_year
+                    && !small_ordinal
+                    && !denominator
+                    && !allowed.contains(&n)
+                    && !allowed.is_empty()
+                {
+                    issues.push(format!(
+                        "figure {n} (\"{}\") did not come from any tool output in this run",
+                        line.trim().chars().take(80).collect::<String>()
+                    ));
                 }
             }
             continue;
         }
         let record: String = cited
             .iter()
-            .map(|s| format!("{} {} {} {} {} {}", s.id, s.title, s.venue, s.finding, s.limitation, s.relevance))
+            .map(|s| {
+                format!(
+                    "{} {} {} {} {} {}",
+                    s.id, s.title, s.venue, s.finding, s.limitation, s.relevance
+                )
+            })
             .collect::<Vec<_>>()
             .join(" ");
         let known: Vec<String> = numbers(&record);
         let ids: Vec<&str> = cited.iter().map(|s| s.id.as_str()).collect();
         for n in numbers(line) {
             let is_year = n.len() == 4 && (1900..=2100).contains(&n.parse::<u32>().unwrap_or(0));
-            if is_year || ids.iter().any(|id| id.contains(&n)) || known.contains(&n) || allowed.contains(&n) {
+            if is_year
+                || ids.iter().any(|id| id.contains(&n))
+                || known.contains(&n)
+                || allowed.contains(&n)
+            {
                 continue;
             }
-            issues.push(format!("figure {n} next to {} does not appear in that study's record", ids.join(", ")));
+            issues.push(format!(
+                "figure {n} next to {} does not appear in that study's record",
+                ids.join(", ")
+            ));
         }
     }
     issues
@@ -367,11 +414,25 @@ impl Panel {
         for d in &ontology.domains {
             let tools = domain_tools(ontology, &d.id);
             let specs: Vec<ToolSpec> = tools.iter().map(|t| t.spec()).collect();
-            let model = plan.expert_provider(&d.id, Arc::new(OfflineExpertModel { domain: d.id.clone() }))?;
-            let agent = BasicAgent::new(expert_name(&d.id), expert_prompt(d, &specs, &plan), model, tools);
+            let model = plan.expert_provider(
+                &d.id,
+                Arc::new(OfflineExpertModel {
+                    domain: d.id.clone(),
+                }),
+            )?;
+            let agent = BasicAgent::new(
+                expert_name(&d.id),
+                expert_prompt(d, &specs, &plan),
+                model,
+                tools,
+            );
             experts.insert(d.id.clone(), Arc::new(agent));
         }
-        Ok(Self { ontology, plan: Arc::new(plan), experts })
+        Ok(Self {
+            ontology,
+            plan: Arc::new(plan),
+            experts,
+        })
     }
 
     /// The domain ids, in ontology order, that a model plan must cover.
@@ -410,15 +471,23 @@ impl Panel {
     /// profile up front.
     pub async fn ask_for_state(&self, question: &str, state: Option<&str>) -> Result<PanelAnswer> {
         let state = match state {
-            Some(s) => Some(crate::state::find(s).ok_or_else(|| anyhow!("unknown state '{s}'; use a USPS code like CA or a full name"))?),
+            Some(s) => Some(crate::state::find(s).ok_or_else(|| {
+                anyhow!("unknown state '{s}'; use a USPS code like CA or a full name")
+            })?),
             None => None,
         };
         let message = crate::state::with_state(question, state);
         let storage = InMemoryStorage::new();
         let audit = MemoryAudit::new();
-        let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), audit.clone(), Arc::new(SystemClock));
+        let kernel = Kernel::new(
+            root_grants(),
+            Arc::new(RuleSetPolicy::new()),
+            audit.clone(),
+            Arc::new(SystemClock),
+        );
         let admission = kernel.admit(&orchestrator_manifest(&self.plan), None);
-        let services = Arc::new(kernel.attach(&admission, raw_services(ORCHESTRATOR, storage.clone())));
+        let services =
+            Arc::new(kernel.attach(&admission, raw_services(ORCHESTRATOR, storage.clone())));
         services.begin_activation(format!("ask:{question}"), 8 * 1024 * 1024);
 
         let consult_tools: Vec<Arc<dyn Tool>> = self
@@ -435,22 +504,39 @@ impl Panel {
             })
             .collect();
         let specs: Vec<ToolSpec> = consult_tools.iter().map(|t| t.spec()).collect();
-        let model = self.plan.leader_provider(Arc::new(OfflineOrchestratorModel { ontology: self.ontology }))?;
-        let orchestrator = BasicAgent::new(ORCHESTRATOR, orchestrator_prompt(&specs, &self.plan), model, consult_tools);
+        let model = self
+            .plan
+            .leader_provider(Arc::new(OfflineOrchestratorModel {
+                ontology: self.ontology,
+            }))?;
+        let orchestrator = BasicAgent::new(
+            ORCHESTRATOR,
+            orchestrator_prompt(&specs, &self.plan),
+            model,
+            consult_tools,
+        );
 
         let mut ctx = AgentContext::new(services.clone());
         if let (Some(s), false) = (state, self.plan.is_offline()) {
-            ctx.transcript.push(Message::user(format!("Context for this question:\n{}", s.profile())));
+            ctx.transcript.push(Message::user(format!(
+                "Context for this question:\n{}",
+                s.profile()
+            )));
         }
         ctx.transcript.push(Message::user(message));
-        let mut outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
+        let mut outcome = ReActLoop { max_steps: 10 }
+            .run(&orchestrator, &mut ctx)
+            .await?;
 
         // A leader that answers without consulting anyone is answering from
         // memory, not from the evidence base. Nudge once, then label it.
         let mut consulted = consulted_domains(&services).await?;
         if consulted.is_empty() && !self.plan.is_offline() {
-            ctx.transcript.push(Message::user(UNGROUNDED_NUDGE.to_string()));
-            outcome = ReActLoop { max_steps: 10 }.run(&orchestrator, &mut ctx).await?;
+            ctx.transcript
+                .push(Message::user(UNGROUNDED_NUDGE.to_string()));
+            outcome = ReActLoop { max_steps: 10 }
+                .run(&orchestrator, &mut ctx)
+                .await?;
             consulted = consulted_domains(&services).await?;
         }
         // Model answers are checked against the ontology; offline answers
@@ -465,14 +551,24 @@ impl Panel {
                 }
             }
         }
-        let check = |t: &str| if self.plan.is_offline() { Vec::new() } else { check_citations(self.ontology, t, &allowed) };
+        let check = |t: &str| {
+            if self.plan.is_offline() {
+                Vec::new()
+            } else {
+                check_citations(self.ontology, t, &allowed)
+            }
+        };
         let mut answer = outcome.final_text;
         let mut citation_issues = check(&answer);
         // One revision pass: hand the leader its own unsourced figures and
         // keep the rewrite only if it is cleaner.
         if !citation_issues.is_empty() && !consulted.is_empty() {
-            ctx.transcript.push(Message::user(revision_request(&citation_issues)));
-            let revised = ReActLoop { max_steps: 4 }.run(&orchestrator, &mut ctx).await?.final_text;
+            ctx.transcript
+                .push(Message::user(revision_request(&citation_issues)));
+            let revised = ReActLoop { max_steps: 4 }
+                .run(&orchestrator, &mut ctx)
+                .await?
+                .final_text;
             let revised_issues = check(&revised);
             if revised_issues.len() < citation_issues.len() {
                 answer = revised;
@@ -494,7 +590,13 @@ impl Panel {
             )
         };
         let audit = audit.events().await.iter().map(|e| e.summarize()).collect();
-        Ok(PanelAnswer { text, consulted, audit, models: self.plan.describe(), citation_issues })
+        Ok(PanelAnswer {
+            text,
+            consulted,
+            audit,
+            models: self.plan.describe(),
+            citation_issues,
+        })
     }
 }
 
@@ -513,7 +615,11 @@ mod tests {
         let per = BTreeMap::from([("adu".to_string(), "granite-3.3-8b".to_string())]);
         let plan = ModelPlan::resolve(
             Registry::bundled(),
-            Backend::OpenAiCompat { host: Host::Ollama, base_url: "http://localhost:11434/v1".into(), api_key: None },
+            Backend::OpenAiCompat {
+                host: Host::Ollama,
+                base_url: "http://localhost:11434/v1".into(),
+                api_key: None,
+            },
             Some("workstation"),
             None,
             None,
@@ -521,9 +627,18 @@ mod tests {
             &Panel::domain_ids(Ontology::bundled()),
         )
         .unwrap();
-        assert_eq!(orchestrator_manifest(&plan).model_class.revision, "qwen3:32b");
-        assert_eq!(expert_manifest("adu", &plan).model_class.revision, "granite3.3:8b");
-        assert_eq!(expert_manifest("fees", &plan).model_class.revision, "qwen3:8b");
+        assert_eq!(
+            orchestrator_manifest(&plan).model_class.revision,
+            "qwen3:32b"
+        );
+        assert_eq!(
+            expert_manifest("adu", &plan).model_class.revision,
+            "granite3.3:8b"
+        );
+        assert_eq!(
+            expert_manifest("fees", &plan).model_class.revision,
+            "qwen3:8b"
+        );
     }
 
     fn panel() -> Panel {
@@ -539,10 +654,26 @@ mod tests {
                       | **marantz_elmendorf_kim_2023** | 4 % of total housing stock |\n\
                       The terner_sb9_2021 study found about 700,000 feasible units on 5.4% of parcels.";
         let issues = check_citations(o, answer, &[]);
-        assert!(issues.iter().any(|i| i.contains("`rose_2024_adu` is not a study")), "{issues:#?}");
-        assert!(issues.iter().any(|i| i.contains("figure 4 next to marantz_elmendorf_kim_2023")), "{issues:#?}");
-        assert!(!issues.iter().any(|i| i.contains("pew_2026_adu")), "correct figures pass: {issues:#?}");
-        assert!(!issues.iter().any(|i| i.contains("terner_sb9_2021")), "correct figures pass: {issues:#?}");
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.contains("`rose_2024_adu` is not a study")),
+            "{issues:#?}"
+        );
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.contains("figure 4 next to marantz_elmendorf_kim_2023")),
+            "{issues:#?}"
+        );
+        assert!(
+            !issues.iter().any(|i| i.contains("pew_2026_adu")),
+            "correct figures pass: {issues:#?}"
+        );
+        assert!(
+            !issues.iter().any(|i| i.contains("terner_sb9_2021")),
+            "correct figures pass: {issues:#?}"
+        );
     }
 
     #[test]
@@ -550,8 +681,13 @@ mod tests {
         let o = Ontology::bundled();
         let s = crate::state::find("CA").unwrap();
         let central = s.baseline().central.to_string();
-        let line = format!("Against a baseline of {} units, pew_2026_adu reports 81 per 100 000 residents.", crate::state::thousands(s.baseline().central));
-        assert!(check_citations(o, &line, &[]).iter().any(|i| i.contains(&central)));
+        let line = format!(
+            "Against a baseline of {} units, pew_2026_adu reports 81 per 100 000 residents.",
+            crate::state::thousands(s.baseline().central)
+        );
+        assert!(check_citations(o, &line, &[])
+            .iter()
+            .any(|i| i.contains(&central)));
         assert!(check_citations(o, &line, &numbers(&s.profile())).is_empty());
     }
 
@@ -561,36 +697,73 @@ mod tests {
         let s = crate::state::find("PA").unwrap();
         let allowed = numbers(&s.profile());
         // From a real gpt-oss-120b answer: 2.3 per 1,000 is 230 per 100,000, not 23.
-        let issues = check_citations(o, "| PA state profile | per 1 000 residents | 2.3 (≈ 23 per 100 000) |", &allowed);
-        assert!(issues.iter().any(|i| i.contains("figure 23 ")), "{issues:#?}");
+        let issues = check_citations(
+            o,
+            "| PA state profile | per 1 000 residents | 2.3 (≈ 23 per 100 000) |",
+            &allowed,
+        );
+        assert!(
+            issues.iter().any(|i| i.contains("figure 23 ")),
+            "{issues:#?}"
+        );
         let from_tool = numbers(&crate::state::scale_rate(s, 81.0));
         let mut ok = allowed.clone();
         ok.extend(from_tool);
-        let scaled = crate::state::thousands((81.0 * s.population as f64 / 100_000.0 * 5.0).round() as u64);
-        assert!(check_citations(o, &format!("Scaled: {scaled} units over five years."), &ok).is_empty());
+        let scaled =
+            crate::state::thousands((81.0 * s.population as f64 / 100_000.0 * 5.0).round() as u64);
+        assert!(
+            check_citations(o, &format!("Scaled: {scaled} units over five years."), &ok).is_empty()
+        );
     }
 
     #[tokio::test]
     async fn state_questions_lead_with_the_state_baseline_and_required_sections() {
-        let a = panel().ask_for_state("How many ADUs could a state law add?", Some("PA")).await.unwrap();
-        assert!(a.text.contains("## Statewide baseline: Pennsylvania"), "{}", a.text);
+        let a = panel()
+            .ask_for_state("How many ADUs could a state law add?", Some("PA"))
+            .await
+            .unwrap();
+        assert!(
+            a.text.contains("## Statewide baseline: Pennsylvania"),
+            "{}",
+            a.text
+        );
         assert!(a.text.contains("FIVE-YEAR BASELINE"));
         assert!(a.text.contains("Applying this to Pennsylvania"));
         assert!(a.text.contains("## What this cannot tell you"));
-        assert!(a.audit.iter().any(|l| l.contains("expert.adu") && l.contains("tool:state.profile") && l.contains("ALLOW")), "{:#?}", a.audit);
-        assert_eq!(a.consulted, vec!["adu".to_string()], "the STATE line must not change routing");
+        assert!(
+            a.audit.iter().any(|l| l.contains("expert.adu")
+                && l.contains("tool:state.profile")
+                && l.contains("ALLOW")),
+            "{:#?}",
+            a.audit
+        );
+        assert_eq!(
+            a.consulted,
+            vec!["adu".to_string()],
+            "the STATE line must not change routing"
+        );
         assert!(panel().ask_for_state("q", Some("Narnia")).await.is_err());
     }
 
     #[test]
     fn numbers_are_normalized() {
-        assert_eq!(numbers("81 per 100 000, 5.4% and 700,000"), vec!["81", "100000", "5.4", "700000"]);
+        assert_eq!(
+            numbers("81 per 100 000, 5.4% and 700,000"),
+            vec!["81", "100000", "5.4", "700000"]
+        );
     }
 
     #[tokio::test]
     async fn adu_question_is_answered_by_the_adu_expert_from_the_ontology() {
-        let a = panel().ask("How many ADUs could a statewide ADU law add in five years?").await.unwrap();
-        assert!(a.consulted.contains(&"adu".to_string()), "{:?}", a.consulted);
+        let a = panel()
+            .ask("How many ADUs could a statewide ADU law add in five years?")
+            .await
+            .unwrap();
+        assert!(
+            a.consulted.contains(&"adu".to_string()),
+            "{:?}",
+            a.consulted
+        );
         assert!(a.text.contains("Accessory dwelling units"));
         assert!(a.text.contains("USABLE DATASETS"));
     }
@@ -609,19 +782,34 @@ mod tests {
     #[tokio::test]
     async fn experts_are_spawned_children_and_every_decision_is_audited() {
         let a = panel().ask("What do impact fee cuts do?").await.unwrap();
-        assert!(a.audit.iter().any(|l| l.contains("expert.fees") && l.contains("ALLOW")));
-        assert!(a.audit.iter().all(|l| !l.contains("DENY")), "{:#?}", a.audit);
+        assert!(a
+            .audit
+            .iter()
+            .any(|l| l.contains("expert.fees") && l.contains("ALLOW")));
+        assert!(
+            a.audit.iter().all(|l| !l.contains("DENY")),
+            "{:#?}",
+            a.audit
+        );
     }
 
     #[tokio::test]
     async fn an_expert_cannot_invoke_another_domains_tools() {
         let storage = InMemoryStorage::new();
-        let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), MemoryAudit::new(), Arc::new(SystemClock));
+        let kernel = Kernel::new(
+            root_grants(),
+            Arc::new(RuleSetPolicy::new()),
+            MemoryAudit::new(),
+            Arc::new(SystemClock),
+        );
         let adm = kernel.admit(&orchestrator_manifest(&offline_plan()), None);
         let orch = kernel.attach(&adm, raw_services(ORCHESTRATOR, storage.clone()));
         orch.begin_activation("test", u64::MAX);
         let adu = orch
-            .spawn_child(&expert_manifest("adu", &offline_plan()), raw_services("expert.adu", storage))
+            .spawn_child(
+                &expert_manifest("adu", &offline_plan()),
+                raw_services("expert.adu", storage),
+            )
             .await
             .unwrap();
         adu.begin_activation("test", u64::MAX);
@@ -636,17 +824,28 @@ mod tests {
     #[tokio::test]
     async fn an_expert_cannot_spawn_further_agents() {
         let storage = InMemoryStorage::new();
-        let kernel = Kernel::new(root_grants(), Arc::new(RuleSetPolicy::new()), MemoryAudit::new(), Arc::new(SystemClock));
+        let kernel = Kernel::new(
+            root_grants(),
+            Arc::new(RuleSetPolicy::new()),
+            MemoryAudit::new(),
+            Arc::new(SystemClock),
+        );
         let adm = kernel.admit(&orchestrator_manifest(&offline_plan()), None);
         let orch = kernel.attach(&adm, raw_services(ORCHESTRATOR, storage.clone()));
         orch.begin_activation("test", u64::MAX);
         let adu = orch
-            .spawn_child(&expert_manifest("adu", &offline_plan()), raw_services("expert.adu", storage.clone()))
+            .spawn_child(
+                &expert_manifest("adu", &offline_plan()),
+                raw_services("expert.adu", storage.clone()),
+            )
             .await
             .unwrap();
         adu.begin_activation("test", u64::MAX);
         assert!(adu
-            .spawn_child(&expert_manifest("fees", &offline_plan()), raw_services("expert.fees", storage))
+            .spawn_child(
+                &expert_manifest("fees", &offline_plan()),
+                raw_services("expert.fees", storage)
+            )
             .await
             .is_err());
     }

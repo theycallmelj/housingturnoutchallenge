@@ -79,24 +79,64 @@ fn call_tool(o: &Ontology, name: &str, args: &Value) -> Value {
                 .collect();
             text_result(lines.join("\n"), false)
         }
-        "evidence_brief" => match s("domain").and_then(|d| o.evidence_brief(d, s("query").unwrap_or(""), 8)) {
-            Some(t) => text_result(t, false),
-            None => text_result(format!("unknown domain; expected one of: {}", o.domains.iter().map(|d| d.id.as_str()).collect::<Vec<_>>().join(", ")), true),
-        },
+        "evidence_brief" => {
+            match s("domain").and_then(|d| o.evidence_brief(d, s("query").unwrap_or(""), 8)) {
+                Some(t) => text_result(t, false),
+                None => text_result(
+                    format!(
+                        "unknown domain; expected one of: {}",
+                        o.domains
+                            .iter()
+                            .map(|d| d.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    true,
+                ),
+            }
+        }
         "find_studies" => {
-            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(8).clamp(1, 25) as usize;
-            let studies = o.find_studies(s("domain"), s("scenario"), s("query").unwrap_or(""), limit);
-            let text = studies.into_iter().map(|x| o.format_study(x)).collect::<Vec<_>>().join("\n");
-            text_result(if text.is_empty() { "no matching studies".into() } else { text }, false)
+            let limit = args
+                .get("limit")
+                .and_then(Value::as_u64)
+                .unwrap_or(8)
+                .clamp(1, 25) as usize;
+            let studies =
+                o.find_studies(s("domain"), s("scenario"), s("query").unwrap_or(""), limit);
+            let text = studies
+                .into_iter()
+                .map(|x| o.format_study(x))
+                .collect::<Vec<_>>()
+                .join("\n");
+            text_result(
+                if text.is_empty() {
+                    "no matching studies".into()
+                } else {
+                    text
+                },
+                false,
+            )
         }
         "find_datasets" => {
-            let usable_only = args.get("usable_only").and_then(Value::as_bool).unwrap_or(false);
+            let usable_only = args
+                .get("usable_only")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let ds = o.find_datasets(s("domain"), s("scenario"), usable_only);
-            text_result(ds.into_iter().map(|d| o.format_dataset(d)).collect::<Vec<_>>().join("\n"), false)
+            text_result(
+                ds.into_iter()
+                    .map(|d| o.format_dataset(d))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                false,
+            )
         }
         "state_baseline" => match s("state").and_then(crate::state::find) {
             Some(st) => text_result(st.profile(), false),
-            None => text_result("unknown state; use a USPS code like CA or a full name".into(), true),
+            None => text_result(
+                "unknown state; use a USPS code like CA or a full name".into(),
+                true,
+            ),
         },
         "get_entity" => match s("id").and_then(|id| o.describe(id)) {
             Some(t) => text_result(t, false),
@@ -127,8 +167,14 @@ pub fn handle(o: &Ontology, msg: &Value) -> Option<Value> {
         "ping" => json!({}),
         "tools/list" => json!({"tools": tool_list()}),
         "tools/call" => {
-            let name = msg.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
-            let args = msg.pointer("/params/arguments").cloned().unwrap_or(json!({}));
+            let name = msg
+                .pointer("/params/name")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let args = msg
+                .pointer("/params/arguments")
+                .cloned()
+                .unwrap_or(json!({}));
             call_tool(o, name, &args)
         }
         _ => {
@@ -150,10 +196,23 @@ pub async fn handle_with_panel(o: &Ontology, panel: &Panel, msg: &Value) -> Opti
         return handle(o, msg);
     }
     let id = msg.get("id").cloned()?;
-    let question = msg.pointer("/params/arguments/question").and_then(Value::as_str).unwrap_or("");
-    let state = msg.pointer("/params/arguments/state").and_then(Value::as_str);
+    let question = msg
+        .pointer("/params/arguments/question")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let state = msg
+        .pointer("/params/arguments/state")
+        .and_then(Value::as_str);
     let result = match panel.ask_for_state(question, state).await {
-        Ok(a) => text_result(format!("{}\n\nExperts consulted: {}\nModels: {}", a.text, a.consulted.join(", "), a.models), false),
+        Ok(a) => text_result(
+            format!(
+                "{}\n\nExperts consulted: {}\nModels: {}",
+                a.text,
+                a.consulted.join(", "),
+                a.models
+            ),
+            false,
+        ),
         Err(e) => text_result(format!("panel error: {e}"), true),
     };
     Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
@@ -171,7 +230,9 @@ pub async fn serve_stdio(o: &'static Ontology) -> anyhow::Result<()> {
         }
         let response = match serde_json::from_str::<Value>(&line) {
             Ok(msg) => handle_with_panel(o, &panel, &msg).await,
-            Err(e) => Some(json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": e.to_string()}})),
+            Err(e) => Some(
+                json!({"jsonrpc": "2.0", "id": null, "error": {"code": -32700, "message": e.to_string()}}),
+            ),
         };
         if let Some(r) = response {
             stdout.write_all(r.to_string().as_bytes()).await?;
@@ -199,12 +260,20 @@ mod tests {
 
     #[test]
     fn notifications_get_no_response() {
-        assert!(handle(o(), &json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).is_none());
+        assert!(handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        )
+        .is_none());
     }
 
     #[test]
     fn tools_list_has_input_schemas() {
-        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})).unwrap();
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+        )
+        .unwrap();
         let tools = r["result"]["tools"].as_array().unwrap();
         assert!(tools.len() >= 5);
         assert!(tools.iter().all(|t| t["inputSchema"]["type"] == "object"));
@@ -212,8 +281,12 @@ mod tests {
 
     #[test]
     fn tools_call_find_datasets_usable_only() {
-        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-            "params": {"name": "find_datasets", "arguments": {"usable_only": true}}})).unwrap();
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {"name": "find_datasets", "arguments": {"usable_only": true}}}),
+        )
+        .unwrap();
         let text = r["result"]["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("census_bps"));
         assert!(!text.contains("NOT usable"));
@@ -221,8 +294,12 @@ mod tests {
 
     #[test]
     fn unknown_entity_is_a_tool_error_not_a_protocol_error() {
-        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
-            "params": {"name": "get_entity", "arguments": {"id": "nope"}}})).unwrap();
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {"name": "get_entity", "arguments": {"id": "nope"}}}),
+        )
+        .unwrap();
         assert_eq!(r["result"]["isError"], true);
     }
 
@@ -239,14 +316,25 @@ mod tests {
 
     #[test]
     fn state_baseline_tool_returns_the_profile() {
-        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
-            "params": {"name": "state_baseline", "arguments": {"state": "Wisconsin"}}})).unwrap();
-        assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("Wisconsin (WI)"));
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": "state_baseline", "arguments": {"state": "Wisconsin"}}}),
+        )
+        .unwrap();
+        assert!(r["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Wisconsin (WI)"));
     }
 
     #[test]
     fn unknown_method_is_method_not_found() {
-        let r = handle(o(), &json!({"jsonrpc": "2.0", "id": 5, "method": "resources/list"})).unwrap();
+        let r = handle(
+            o(),
+            &json!({"jsonrpc": "2.0", "id": 5, "method": "resources/list"}),
+        )
+        .unwrap();
         assert_eq!(r["error"]["code"], -32601);
     }
 }
