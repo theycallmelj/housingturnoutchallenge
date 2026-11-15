@@ -83,7 +83,7 @@ The handbook FAQ says AI use is allowed: "You must be able to explain, test, and
 - **License:** this repository is **Apache-2.0** (see [`LICENSE`](LICENSE)), per Official Rules §7.b.i. All first-party code is contributed under Apache-2.0. Don't add files under other licenses, and don't use public-domain dedications for our own code.
 - **No third-party content in the repo:** don't commit papers, PDFs, images, fonts, code snippets, or datasets authored by others unless they are an OSI-licensed dependency recorded in the SBOM, or public-domain data that passes the data license rule. The submission must be the team's original work (§7.a) and must not infringe copyright (§10.3). Link to external material instead.
 - **Reproducibility:** documented setup and run commands; automated tests for core logic (`pnpm test` or equivalent) must pass.
-- **Security:** no committed secrets; zero unresolved secret-scanning alerts; no unaddressed critical/high Dependabot or CodeQL findings.
+- **Security:** no committed secrets; zero unresolved secret-scanning alerts; no unaddressed critical/high Dependabot or CodeQL findings. Pin third-party GitHub Actions (anything outside `actions/*` and `github/*`) to a full commit SHA with the version in a comment; Dependabot keeps the pins current.
 - **Language:** memory-safe languages only (TypeScript/JS, Python, Rust, Go, etc.).
 - **Modeling expectations:** statewide aggregate impacts vs. a five-year baseline; at least three of the five benchmark scenarios (ADUs, missing middle, transit-oriented density, parking reduction, 50% fee reduction); show ranges and sensitivity, not single-point predictions; keep the model explainable to a non-technical policymaker.
 

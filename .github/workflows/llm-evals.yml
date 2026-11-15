@@ -54,9 +54,11 @@ jobs:
         run: echo "::notice::OPENROUTER_API_KEY secret is not set; skipping live evals."
       - uses: actions/checkout@v7
         if: env.OPENROUTER_API_KEY != ''
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch
+        with:
+          toolchain: stable
         if: env.OPENROUTER_API_KEY != ''
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         if: env.OPENROUTER_API_KEY != ''
         with:
           workspaces: agents
