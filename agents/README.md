@@ -166,5 +166,5 @@ Each agent's manifest records the host and the model it runs (e.g. `openrouter` 
 
 ```bash
 cargo install cargo-cyclonedx --locked   # once
-cd agents && cargo cyclonedx -f json --all-features --spec-version 1.5 --override-filename sbom.cdx
+cd agents && cargo cyclonedx -f json --all-features --target all --spec-version 1.5 --override-filename sbom.cdx
 ```

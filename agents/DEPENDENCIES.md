@@ -4,7 +4,7 @@ Reviewed 2026-11-03 from `cargo metadata` and the CycloneDX SBOM ([`sbom.cdx.jso
 
 ## Crates
 
-All 116 SBOM components, including the optional `llm` feature, are permissive: MIT and/or Apache-2.0, plus ISC (`ring`, `rustls-webpki`), BSD, Zlib, and Unicode-3.0. Where a crate offers a choice (e.g. `MIT OR Apache-2.0 OR LGPL-2.1-or-later`, `Unlicense OR MIT`), we take it under **MIT**. No component is MPL, GPL, CDLA, or OpenSSL-only.
+All 143 SBOM components, including the optional `llm` feature and platform-specific crates for every target (`--target all`, so the SBOM is the same on macOS, Linux and Windows), are permissive: MIT and/or Apache-2.0, plus ISC (`ring`, `rustls-webpki`), BSD, Zlib, and Unicode-3.0. Where a crate offers a choice (e.g. `r-efi`: `MIT OR Apache-2.0 OR LGPL-2.1-or-later`; `Unlicense OR MIT`), we take it under **MIT**. No component is MPL, GPL, CDLA, or OpenSSL-only.
 
 | Direct dependency | Version | License | Purpose |
 | --- | --- | --- | --- |

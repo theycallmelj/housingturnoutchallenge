@@ -38,7 +38,7 @@ npx --yes @cyclonedx/cdxgen@12.9.0 -t pnpm --spec-version 1.5 --no-recurse -o sb
 pipx run cyclonedx-bom -r -i requirements.txt -o sbom.cdx.json   # or: cyclonedx-py environment
 
 # Rust projects (once: cargo install cargo-cyclonedx --locked)
-cargo cyclonedx -f json --spec-version 1.5 --override-filename sbom.cdx
+cargo cyclonedx -f json --all-features --target all --spec-version 1.5 --override-filename sbom.cdx   # --target all: same SBOM on every OS
 
 # Any language / container (alternative)
 syft dir:. -o cyclonedx-json=sbom.cdx.json

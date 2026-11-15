@@ -101,7 +101,7 @@ jobs:
       - name: Compare committed SBOM with a fresh one
         working-directory: agents
         run: |
-          cargo cyclonedx -f json --all-features --spec-version 1.5 --override-filename fresh-sbom
+          cargo cyclonedx -f json --all-features --target all --spec-version 1.5 --override-filename fresh-sbom
           python3 ../scripts/sbom_diff.py sbom.cdx.json fresh-sbom.json
 
   state-data:
