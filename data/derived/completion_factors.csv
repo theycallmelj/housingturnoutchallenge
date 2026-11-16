@@ -1,0 +1,6 @@
+region,completion_ratio,months_permit_to_completion_1unit,months_permit_to_completion_2plus,ratio_window,months_window
+united_states,0.9279,9.24,19.16,completions 2016-2025 / permits 2015-2024,2021-2025 average
+northeast,0.8263,13.06,21.92,completions 2016-2025 / permits 2015-2024,2021-2025 average
+midwest,0.9368,9.28,16.98,completions 2016-2025 / permits 2015-2024,2021-2025 average
+south,0.9464,8.48,18.24,completions 2016-2025 / permits 2015-2024,2021-2025 average
+west,0.9244,10.08,19.80,completions 2016-2025 / permits 2015-2024,2021-2025 average

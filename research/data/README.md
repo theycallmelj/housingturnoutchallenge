@@ -8,11 +8,11 @@ When a source is actually used, fill in its **version/vintage**, **access date**
 
 | Source | File | Main use | License | Flag |
 | --- | --- | --- | --- | --- |
-| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | **In use** (2021-2025 state files); ADUs reported inconsistently |
-| Census Population Estimates (state totals) | [census-population-estimates.md](census-population-estimates.md) | Per-capita scaling, state profile | Public domain | **In use**; one year applied to the whole horizon |
+| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | **In use** (2021-2025 county files, reconciled to state totals); ADUs reported inconsistently; no tract detail |
+| Census Population Estimates (state and county totals) | [census-population-estimates.md](census-population-estimates.md) | Per-capita scaling, state profile | Public domain | **In use**; one year applied to the whole horizon |
 | Census PEP Housing Unit Estimates | [census-housing-unit-estimates.md](census-housing-unit-estimates.md) | Baseline stock | Public domain | Built from permits, so not independent |
-| Census Survey of Construction | [census-survey-of-construction.md](census-survey-of-construction.md) | Permit→completion lags | Public domain | Region-level only |
-| American Community Survey | [acs.md](acs.md) | Housing characteristics, eligible single-family stock, vacancy | Public domain | Margins of error |
+| Census Survey of Construction | [census-survey-of-construction.md](census-survey-of-construction.md) | Permit→completion lags | Public domain | **In use** (completion ratios and months by region); region-level only |
+| American Community Survey | [acs.md](acs.md) | Housing characteristics, eligible single-family stock, vacancy | Public domain | **In use** (2020-2024 5-year B25024 by county, for county weights); margins of error |
 | Census TIGER/Line | [census-tiger-line.md](census-tiger-line.md) | Geography and joins | Public domain | |
 | BLS construction (QCEW/CES/PPI) | [bls-construction.md](bls-construction.md) | Capacity and costs | Public domain | PPI national only |
 | FHFA House Price Index | [fhfa-hpi.md](fhfa-hpi.md) | Market strength / pro forma | Public domain | Index, not levels; no new construction |
