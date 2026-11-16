@@ -6,7 +6,7 @@
 | **Source URL** | https://www.census.gov/construction/bps/ · bulk files: https://www2.census.gov/econ/bps/ |
 | **Publisher** | U.S. Census Bureau |
 | **Access method** | Bulk text/CSV files by state, county, metro, and place, monthly and annual |
-| **Version / vintage used** | Annual county files `co2021a.txt` to `co2025a.txt` (imputed totals); annual state files `st2021a.txt` to `st2025a.txt` for reconciliation |
+| **Version / vintage used** | Annual county files `co2010a.txt` to `co2025a.txt` (imputed totals); annual state files `st2021a.txt` to `st2025a.txt` for reconciliation |
 | **Access date** | 2026-11-16 (checksums in `research/data/raw/CHECKSUMS.txt`, regenerated on each fetch) |
 | **License / terms** | U.S. government work, public domain |
 | **Geography & time coverage** | National, state, metro, county, and permit-issuing place (about 20,000 jurisdictions). Annual place-level data go back decades; monthly data exist for a sample of places, with the rest imputed. |
@@ -19,7 +19,9 @@ Counts of housing units authorized by building permits and their construction va
 
 ## Cleaning & transformation steps
 
-Done by [`scripts/fetch_state_baseline.py`](../../scripts/fetch_state_baseline.py), producing [`data/derived/county_baseline.csv`](../../data/derived/county_baseline.csv) and [`data/derived/state_baseline.csv`](../../data/derived/state_baseline.csv):
+**County panel for the baseline model**, by [`scripts/fetch_county_panel.py`](../../scripts/fetch_county_panel.py), producing [`data/derived/county_panel.csv`](../../data/derived/county_panel.csv): county files 2010-2025, imputed-estimate units by building type (1 unit; 2 + 3-4 units as 2-4; 5+), one row per county and year. Connecticut switches from its old counties to planning regions in the 2023 files; the panel keeps both codes as separate series.
+
+**Static county table**, by [`scripts/fetch_state_baseline.py`](../../scripts/fetch_state_baseline.py), producing [`data/derived/county_baseline.csv`](../../data/derived/county_baseline.csv) and [`data/derived/state_baseline.csv`](../../data/derived/state_baseline.csv):
 
 1. Download `https://www2.census.gov/econ/bps/County/co{YEAR}a.txt` and `https://www2.census.gov/econ/bps/State/st{YEAR}a.txt` for 2021-2025 into `research/data/raw/` and record SHA-256 checksums.
 2. Keep counties in the 50 states and DC (51 FIPS codes); drop territories.
@@ -28,7 +30,7 @@ Done by [`scripts/fetch_state_baseline.py`](../../scripts/fetch_state_baseline.p
 5. **Reconcile:** for every state and year, the sum of its counties must equal the state file's total exactly, or the script fails. (On 2026-11-16 the largest difference was 0 units.)
 6. Add the 108 counties that appear in the population estimates but issue no permits, with zero permits and `permit_issuing = 0`.
 7. State rows = the sum of their counties.
-8. In `agents/src/state.rs`: five-year baseline = 2021-2025 average annual units × 5; low/high = slowest and fastest year × 5.
+8. The five-year baseline is a forecast by the county permit model in `agents/src/forecast.rs` (see `MODEL.md`), fitted on the panel. The earlier rule (2021-2025 average × 5) is kept as `recent_pace` for comparison.
 
 ## Known limitations
 

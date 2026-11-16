@@ -8,14 +8,15 @@ When a source is actually used, fill in its **version/vintage**, **access date**
 
 | Source | File | Main use | License | Flag |
 | --- | --- | --- | --- | --- |
-| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | **In use** (2021-2025 county files, reconciled to state totals); ADUs reported inconsistently; no tract detail |
-| Census Population Estimates (state and county totals) | [census-population-estimates.md](census-population-estimates.md) | Per-capita scaling, state profile | Public domain | **In use**; one year applied to the whole horizon |
+| Census Building Permits Survey | [census-building-permits-survey.md](census-building-permits-survey.md) | **Baseline production (core)** | Public domain | **In use** (county files 2010-2025 by building type for the baseline model; 2021-2025 reconciled to state totals); ADUs reported inconsistently; no tract detail |
+| Census Population Estimates (state and county totals) | [census-population-estimates.md](census-population-estimates.md) | Per-capita scaling, state profile, baseline model (population, net migration) | Public domain | **In use** (vintages 2020 and 2025 joined at 2020) |
 | Census PEP Housing Unit Estimates | [census-housing-unit-estimates.md](census-housing-unit-estimates.md) | Baseline stock | Public domain | Built from permits, so not independent |
-| Census Survey of Construction | [census-survey-of-construction.md](census-survey-of-construction.md) | Permit→completion lags | Public domain | **In use** (completion ratios and months by region); region-level only |
+| Census Survey of Construction | [census-survey-of-construction.md](census-survey-of-construction.md) | Permit→start→completion curves | Public domain | **In use** (starts rates 2015-2026, completion-time tables 2015-2025); region-level only |
 | American Community Survey | [acs.md](acs.md) | Housing characteristics, eligible single-family stock, vacancy | Public domain | **In use** (2020-2024 5-year B25024 by county, for county weights); margins of error |
 | Census TIGER/Line | [census-tiger-line.md](census-tiger-line.md) | Geography and joins | Public domain | |
 | BLS construction (QCEW/CES/PPI) | [bls-construction.md](bls-construction.md) | Capacity and costs | Public domain | PPI national only |
-| FHFA House Price Index | [fhfa-hpi.md](fhfa-hpi.md) | Market strength / pro forma | Public domain | Index, not levels; no new construction |
+| FHFA House Price Index | [fhfa-hpi.md](fhfa-hpi.md) | Market strength: baseline model predictor | Public domain | **In use** (annual county change 2010-2025); developmental index, gaps imputed |
+| U.S. Treasury yield curve | [treasury-yield-curve.md](treasury-yield-curve.md) | Financing conditions: baseline model predictor | Public domain | **In use** (10-year, annual averages 2010-2025); national only |
 | National Transit Database | [national-transit-database.md](national-transit-database.md) | TOD service levels | Public domain | No stop locations |
 | USGS NLCD | [nlcd.md](nlcd.md) | Developed land screening | Public domain | 30 m; large |
 | NASA land cover (MODIS) | [nasa-land-cover.md](nasa-land-cover.md) | Secondary land-cover check | NASA open data, no restrictions | 500 m; free Earthdata login |
