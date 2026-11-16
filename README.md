@@ -20,7 +20,7 @@ Team repository for the [Housing Data and Technology Innovation Challenge](https
 
 | Workflow | Runs | What it checks |
 | --- | --- | --- |
-| `rust.yml` | every push and PR | `cargo fmt`, `clippy -D warnings` (with and without `llm`), tests (both feature sets), offline panel evals (100% required), and that `scripts/fetch_state_baseline.py` and `scripts/fetch_construction_timing.py` reproduce the committed county, state, and completion tables |
+| `rust.yml` | every push and PR | `cargo fmt`, `clippy -D warnings` (with and without `llm`), tests (both feature sets), offline panel evals (100% required), that the committed baseline model matches a fresh fit (`housing-fit --check`), the pipeline's unit tests, and that the fetch scripts reproduce every committed table in `data/derived/` |
 | `web.yml` | every push and PR | React prototype: frozen-lockfile install, unit tests, typecheck + production build |
 | `llm-evals.yml` | on demand, weekly, PRs labelled `llm-evals` | Live-model panel evals on OpenRouter; needs the `OPENROUTER_API_KEY` repository secret |
 | `codeql.yml` | every push, PR, weekly | Security analysis for Rust, TypeScript, and the workflows themselves (eligibility gate) |

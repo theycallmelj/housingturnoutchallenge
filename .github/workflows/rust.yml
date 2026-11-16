@@ -111,18 +111,40 @@ jobs:
           cargo cyclonedx -f json --all-features --target all --spec-version 1.5 --override-filename fresh-sbom
           python3 ../scripts/sbom_diff.py sbom.cdx.json fresh-sbom.json
 
+  baseline-model:
+    name: baseline model matches a fresh fit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: agents
+          key: release
+      # Refits the county permit model and its back-test from the committed
+      # panel; fails if data/derived/baseline_model.json is out of date.
+      - name: housing-fit --check
+        run: cargo run --release --manifest-path $MANIFEST --bin housing-fit -- --check
+
   state-data:
     name: state baseline data is reproducible
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      # Re-fetch the Census files and confirm the committed derived table
-      # matches what the script produces (Official Rules: automated data
+      - name: Pipeline unit tests
+        run: python3 -m unittest discover -s scripts/tests -v
+      # Re-fetch the public source files and confirm the committed derived
+      # tables match what the scripts produce (Official Rules: automated data
       # acquisition, reproducible results).
       - name: Rebuild county and state baselines (fails if county sums don't match state totals)
         run: python3 scripts/fetch_state_baseline.py
-      - name: Rebuild completion factors
+      - name: Rebuild the county panel (BPS, PEP, FHFA, Treasury)
+        run: python3 scripts/fetch_county_panel.py
+      - name: Rebuild permit -> start -> completion curves
         run: python3 scripts/fetch_construction_timing.py
       - name: Committed tables match
         run: git diff --exit-code -- data/derived/
