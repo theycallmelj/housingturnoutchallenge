@@ -65,11 +65,19 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                 ));
             };
             let a = Assumptions::bundled();
-            let b = s.baseline();
+            let cond = crate::forecast::Conditions::from_args(&serde_json::json!({
+                "rate_shift_pp": query_param(query, "rate"),
+                "migration_factor": query_param(query, "migration"),
+                "price_shift_pp": query_param(query, "price"),
+            }));
+            let b = s.baseline_with(&cond);
+            let flow = s.baseline_flow(&cond);
+            let pace = s.recent_pace();
+            let bt = &crate::forecast::model().backtest;
             let scenarios: Vec<Value> = a
                 .scenarios
                 .iter()
-                .filter_map(|spec| a.estimate(&spec.id, s).ok())
+                .filter_map(|spec| a.estimate_with(&spec.id, s, &cond).ok())
                 .map(|e| {
                     json!({
                         "id": e.scenario,
@@ -79,6 +87,11 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                         "high": e.high.round(),
                         "central_by_year": e.central_by_year.iter().map(|v| v.round()).collect::<Vec<_>>(),
                         "completed": {"low": e.completed_low.round(), "central": e.completed_central.round(), "high": e.completed_high.round()},
+                        "by_year": {
+                            "permits": e.added.permits.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                            "starts": e.added.starts.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                            "completions": e.added.completions.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                        },
                         "exposure_factor": e.exposure_factor,
                         "top_counties": e.top_counties.iter().map(|(n, v)| json!({"county": n, "units": v.round()})).collect::<Vec<_>>(),
                         "top_sensitivity": e.sensitivity.first().map(|x| x.label.clone()),
@@ -92,7 +105,16 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                     "state": {"abbr": s.abbr, "name": s.name, "population": s.population},
                     "permits": s.permits.iter().map(|(y, n)| json!({"year": y, "units": n})).collect::<Vec<_>>(),
                     "baseline": {"low": b.low, "central": b.central, "high": b.high},
-                    "baseline_completed": s.baseline_completions().central,
+                    "baseline_completed": flow.total_completions().round(),
+                    "baseline_by_year": {
+                        "years": (0..flow.permits.len()).map(|i| crate::forecast::LAST_YEAR + 1 + i as u32).collect::<Vec<_>>(),
+                        "permits": flow.permits.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                        "starts": flow.starts.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                        "completions": flow.completions.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                    },
+                    "recent_pace": pace.central,
+                    "conditions": {"description": cond.describe(), "rate_shift_pp": cond.rate_shift_pp, "migration_factor": cond.migration_factor, "price_shift_pp": cond.price_shift_pp},
+                    "backtest": {"median_abs_pct_error": bt.model.median_abs_pct_error, "recent_pace_median_abs_pct_error": bt.recent_pace.median_abs_pct_error, "within_20pct": bt.model.within_20pct},
                     "counties": s.counties().len(),
                     "outcome": a.meta.outcome,
                     "status": a.meta.status,

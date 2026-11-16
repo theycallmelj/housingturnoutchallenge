@@ -1,6 +1,6 @@
 {
   "meta": {
-    "outcome": "Additional housing units authorized by building permit over five years, relative to the current-rules baseline (Census Building Permits Survey definition), computed per county and summed to the state. Also reported: how many of those homes are completed within the five years.",
+    "outcome": "Additional housing units authorized by building permit over five years (2026-2030), relative to a current-rules baseline forecast by a county permit model, computed per county and summed to the state. Also reported by year: construction starts and homes completed, from Survey of Construction timing curves.",
     "horizon_years": 5,
     "how_to_read": "Each parameter has a low_case, central and high_case value. The low estimate uses every low_case value together and the high estimate every high_case value, so the range is wide on purpose. low_case is always the value that gives the smaller effect. basis says whether a value comes from a study, the challenge rules, or a team assumption. Team assumptions should be revisited first.",
     "status": "First-pass evidence-anchored assumptions, set 2026-11-15. Values marked basis=assumption are judgment calls anchored to the cited studies, not estimates from them."
@@ -104,11 +104,11 @@
       "id": "missing_middle",
       "label": "Scenario 2: Missing middle (2-6 units)",
       "benchmark": "2-6 dwelling units allowed on parcels currently restricted to single-family use, up to three stories; setbacks and lot coverage assumed not to bind.",
-      "base": "baseline_annual_permits",
+      "base": "baseline_permit_forecast",
       "uses_implementation": true,
       "exposure": "sf_detached",
-      "building_type": "2plus",
-      "formula": "for each county: average annual permits x county weight (single-family detached share vs. U.S.); summed over counties, x missing-middle uplift x implementation share x ramp[y]",
+      "building_type": "2to4",
+      "formula": "for each county: baseline permit forecast for year y x county weight (single-family detached share vs. U.S.); summed over counties, x missing-middle uplift x implementation share x ramp[y]",
       "params": {
         "mm_uplift": {
           "label": "Increase in total permits once the reform is fully in effect",
@@ -136,11 +136,11 @@
       "id": "tod",
       "label": "Scenario 3: Transit-oriented density",
       "benchmark": "Higher allowed residential density (height and/or FAR) near major transit stops; parking requirements may be reduced.",
-      "base": "baseline_annual_permits",
+      "base": "baseline_permit_forecast",
       "uses_implementation": true,
       "exposure": "multifamily",
-      "building_type": "2plus",
-      "formula": "for each county: average annual permits x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x share of permits near major transit x uplift near transit x implementation share x ramp[y]",
+      "building_type": "5plus",
+      "formula": "for each county: baseline permit forecast for year y x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x share of permits near major transit x uplift near transit x implementation share x ramp[y]",
       "params": {
         "tod_share_near_transit": {
           "label": "Share of the state's permits that fall within the transit-proximity threshold",
@@ -177,11 +177,11 @@
       "id": "parking",
       "label": "Scenario 4: Parking requirement reduction",
       "benchmark": "Minimum parking requirements reduced or eliminated for new residential development; developers still provide parking where the market demands it.",
-      "base": "baseline_annual_permits",
+      "base": "baseline_permit_forecast",
       "uses_implementation": true,
       "exposure": "multifamily",
       "building_type": "state_mix",
-      "formula": "for each county: average annual permits x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x parking uplift x implementation share x ramp[y]",
+      "formula": "for each county: baseline permit forecast for year y x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x parking uplift x implementation share x ramp[y]",
       "params": {
         "parking_uplift": {
           "label": "Increase in total permits once fully in effect",
@@ -208,11 +208,11 @@
       "id": "fees",
       "label": "Scenario 5: Development fee reduction",
       "benchmark": "Total development fees (planning, environmental review, building and impact fees) cut 50% across all major categories, from an assumed $50,000 per unit to $25,000.",
-      "base": "baseline_annual_permits",
+      "base": "baseline_permit_forecast",
       "uses_implementation": false,
       "exposure": "none",
       "building_type": "state_mix",
-      "formula": "for each county: average annual permits; summed over counties, x fee-cut uplift x ramp[y]",
+      "formula": "for each county: baseline permit forecast for year y; summed over counties, x fee-cut uplift x ramp[y]",
       "params": {
         "fee_uplift": {
           "label": "Increase in total permits from a $25,000 per-unit fee cut once fully in effect",

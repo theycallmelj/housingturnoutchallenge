@@ -1,29 +1,30 @@
-//! State and county baselines, built by `scripts/fetch_state_baseline.py`
-//! and `scripts/fetch_construction_timing.py` from public-domain Census data:
+//! State and county data, built from public-domain Census data:
 //!
-//! * `data/derived/county_baseline.csv`: per county, permits 2021-2025,
-//!   2025 population, housing units by structure type (ACS 5-year).
+//! * `data/derived/county_baseline.csv` (`scripts/fetch_state_baseline.py`):
+//!   per county, permits 2021-2025, 2025 population, housing units by
+//!   structure type (ACS 5-year).
 //! * `data/derived/state_baseline.csv`: per state, the SUM of its counties
 //!   (the pipeline checks the sums match Census's own state totals).
-//! * `data/derived/completion_factors.csv`: per Census region, how many
-//!   permitted units get completed and how long that takes.
 //!
-//! The baseline is deliberately simple so a policymaker can check it by hand:
+//! The five-year **baseline** (current rules) comes from the county permit
+//! model in [`crate::forecast`]: each county's permits are forecast for
+//! 2026-2030 and summed to the state. The range is the model's back-test
+//! error (10th to 90th percentile of five-year state totals, 2016-2025).
+//! Permits are converted to construction starts and completed homes with the
+//! Survey of Construction curves in [`crate::timing`], including homes
+//! already in the pipeline from 2021-2025 permits.
 //!
-//! * outcome: housing units authorized by building permit (Census BPS);
-//! * central: the 2021-2025 average annual permits × 5 years;
-//! * range: the lowest and highest year in that window × 5;
-//! * completions: the same pace × the region's completion ratio.
-//!
-//! It assumes the recent pace continues with no policy change. It is a
-//! starting point for scenario comparison, not a forecast of the economy.
+//! The previous rule (the 2021-2025 pace repeated) is kept as
+//! [`StateBaseline::recent_pace`] for comparison.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+pub use crate::forecast::Conditions;
+use crate::timing::{BType, Flow};
+
 const STATE_CSV: &str = include_str!("../../data/derived/state_baseline.csv");
 const COUNTY_CSV: &str = include_str!("../../data/derived/county_baseline.csv");
-const COMPLETION_CSV: &str = include_str!("../../data/derived/completion_factors.csv");
 pub const PROVENANCE: &str = "research/data/census-building-permits-survey.md";
 pub const HORIZON_YEARS: u64 = 5;
 
@@ -86,15 +87,6 @@ impl County {
     }
 }
 
-/// How permitted units turn into completed homes in one Census region.
-#[derive(Debug, Clone, Copy)]
-pub struct Completion {
-    /// Completions / permits a year earlier, 2016-2025. Capped at 1 when used.
-    pub ratio: f64,
-    pub months_1unit: f64,
-    pub months_2plus: f64,
-}
-
 /// Low, central and high five-year totals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
@@ -103,11 +95,45 @@ pub struct Range {
     pub high: u64,
 }
 
-/// Share of a year's permits whose homes are finished by the end of the
-/// horizon. Permits are spread evenly through year `y` (1-based); one issued
-/// at time `y - 1 + u` finishes at `y - 1 + u + months / 12`.
-pub fn finished_by_horizon(year: usize, months: f64) -> f64 {
-    (HORIZON_YEARS as f64 + 1.0 - year as f64 - months / 12.0).clamp(0.0, 1.0)
+impl County {
+    /// Panel key: state FIPS + county FIPS.
+    pub fn key(&self) -> String {
+        format!("{}{}", self.state_fips, self.county_fips)
+    }
+}
+
+/// A state's baseline forecast: permits by year and building type.
+#[derive(Debug, Clone)]
+pub struct StateForecast {
+    /// Per horizon year: [1-unit, 2-4, 5+] permits.
+    pub by_year: Vec<[f64; 3]>,
+}
+
+impl StateForecast {
+    pub fn total(&self) -> f64 {
+        self.by_year.iter().map(|y| y.iter().sum::<f64>()).sum()
+    }
+    pub fn path(&self) -> Vec<f64> {
+        self.by_year.iter().map(|y| y.iter().sum()).collect()
+    }
+    /// Shares of forecast permits by building type.
+    pub fn mix(&self) -> [f64; 3] {
+        let t = self.total().max(f64::MIN_POSITIVE);
+        let mut m = [0.0; 3];
+        for y in &self.by_year {
+            for k in 0..3 {
+                m[k] += y[k] / t;
+            }
+        }
+        m
+    }
+}
+
+/// Model back-test multipliers for the baseline range: exp of the 10th and
+/// 90th percentile of log(actual / predicted) five-year state totals.
+pub fn range_multipliers() -> (f64, f64) {
+    let m = &crate::forecast::model().backtest.model;
+    (m.q10_log_ratio.exp(), m.q90_log_ratio.exp())
 }
 
 impl StateBaseline {
@@ -119,8 +145,45 @@ impl StateBaseline {
         self.permits.iter().map(|p| p.1 as f64).sum::<f64>() / self.permits.len() as f64
     }
 
+    /// The model's forecast of permits by year and building type.
+    pub fn forecast(&self, cond: &Conditions) -> StateForecast {
+        let f = crate::forecast::forecasts_for(cond);
+        self.forecast_from(&f)
+    }
+
+    /// Same, from a precomputed set of county forecasts.
+    pub fn forecast_from(&self, f: &HashMap<String, Vec<[f64; 3]>>) -> StateForecast {
+        let mut by_year = vec![[0.0; 3]; HORIZON_YEARS as usize];
+        for c in self.counties() {
+            if let Some(v) = f.get(&c.key()) {
+                for (y, row) in v.iter().enumerate() {
+                    for k in 0..3 {
+                        by_year[y][k] += row[k];
+                    }
+                }
+            }
+        }
+        StateForecast { by_year }
+    }
+
     /// The five-year current-rules baseline in permits (see module docs).
     pub fn baseline(&self) -> Range {
+        self.baseline_with(&Conditions::default())
+    }
+
+    pub fn baseline_with(&self, cond: &Conditions) -> Range {
+        let (lo, hi) = range_multipliers();
+        let c = self.forecast(cond).total();
+        Range {
+            low: (c * lo).round() as u64,
+            central: c.round() as u64,
+            high: (c * hi).round() as u64,
+        }
+    }
+
+    /// The previous rule: 2021-2025 average x 5 (range: slowest and fastest
+    /// year x 5). Kept for comparison with the model.
+    pub fn recent_pace(&self) -> Range {
         let min = self.permits.iter().map(|p| p.1).min().unwrap_or(0);
         let max = self.permits.iter().map(|p| p.1).max().unwrap_or(0);
         Range {
@@ -130,47 +193,52 @@ impl StateBaseline {
         }
     }
 
-    /// The baseline in completed homes. At a steady pace, homes finished in
-    /// the window match permits × the completion ratio (earlier permits
-    /// finish inside it as later ones finish after it).
+    /// Actual permits by building type in the years before the horizon,
+    /// most recent first: [1-unit, 2-4, 5+] for 2025, 2024, ...
+    pub fn prior_by_type(&self) -> Vec<[f64; 3]> {
+        let p = crate::forecast::panel();
+        let mut out = vec![[0.0; 3]; 5];
+        for c in p.counties.iter().filter(|c| c.state == self.fips) {
+            for (k, row) in out.iter_mut().enumerate() {
+                let t = crate::forecast::LAST_YEAR - k as u32;
+                let i = (t - crate::forecast::FIRST_YEAR) as usize;
+                row[0] += c.p1[i].unwrap_or(0.0);
+                row[1] += c.p24[i].unwrap_or(0.0);
+                row[2] += c.p5[i].unwrap_or(0.0);
+            }
+        }
+        out
+    }
+
+    /// Baseline permits, starts and completions by year, including homes
+    /// already in the pipeline from 2021-2025 permits.
+    pub fn baseline_flow(&self, cond: &Conditions) -> Flow {
+        self.flow_for(&self.forecast(cond))
+    }
+
+    pub fn flow_for(&self, f: &StateForecast) -> Flow {
+        let prior = self.prior_by_type();
+        let mut total = Flow::default();
+        for (k, b) in BType::ALL.into_iter().enumerate() {
+            let path: Vec<f64> = f.by_year.iter().map(|y| y[k]).collect();
+            let pr: Vec<f64> = prior.iter().map(|y| y[k]).collect();
+            total.add(&crate::timing::flow(&self.region, b, &path, &pr));
+        }
+        total
+    }
+
+    /// Baseline homes completed over the five years (range scaled like the
+    /// permit range).
     pub fn baseline_completions(&self) -> Range {
-        let r = self.completion().ratio.min(1.0);
-        let b = self.baseline();
-        let f = |x: u64| (x as f64 * r).round() as u64;
+        let (lo, hi) = range_multipliers();
+        let c = self
+            .baseline_flow(&Conditions::default())
+            .total_completions();
         Range {
-            low: f(b.low),
-            central: f(b.central),
-            high: f(b.high),
+            low: (c * lo).round() as u64,
+            central: c.round() as u64,
+            high: (c * hi).round() as u64,
         }
-    }
-
-    pub fn completion(&self) -> Completion {
-        completion(&self.region)
-    }
-
-    /// Share of the latest year's permits in single-unit buildings.
-    pub fn one_unit_share(&self) -> f64 {
-        let t: u64 = self.latest_by_type.iter().sum();
-        if t == 0 {
-            0.5
-        } else {
-            self.latest_by_type[0] as f64 / t as f64
-        }
-    }
-
-    /// Homes finished within the horizon from a per-year path of NEW
-    /// permits that starts in year 1 (a reform's added permits).
-    pub fn completions_from_path(&self, path: &[f64], one_unit_share: f64) -> f64 {
-        let c = self.completion();
-        path.iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let y = i + 1;
-                p * c.ratio.min(1.0)
-                    * (one_unit_share * finished_by_horizon(y, c.months_1unit)
-                        + (1.0 - one_unit_share) * finished_by_horizon(y, c.months_2plus))
-            })
-            .sum()
     }
 
     /// Permits per year that one unit per 100,000 residents represents here,
@@ -200,8 +268,11 @@ impl StateBaseline {
     /// Plain-language profile given to the experts and shown to users.
     pub fn profile(&self) -> String {
         let b = self.baseline();
-        let bc = self.baseline_completions();
-        let c = self.completion();
+        let pace = self.recent_pace();
+        let flow = self.baseline_flow(&Conditions::default());
+        let f = self.forecast(&Conditions::default());
+        let mix = f.mix();
+        let bt = &crate::forecast::model().backtest;
         let years: Vec<String> = self
             .permits
             .iter()
@@ -216,6 +287,21 @@ impl StateBaseline {
             }
         };
         let pct = |x: Option<f64>| x.map_or("n/a".to_string(), |v| format!("{:.0}%", 100.0 * v));
+        let by_year = |v: &[f64]| {
+            v.iter()
+                .enumerate()
+                .map(|(i, x)| {
+                    format!(
+                        "{} {}",
+                        crate::forecast::LAST_YEAR + 1 + i as u32,
+                        thousands(x.round() as u64)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let c1 = crate::timing::curve(&self.region, BType::OneUnit);
+        let c5 = crate::timing::curve(&self.region, BType::FivePlus);
         format!(
             "STATE PROFILE {name} ({abbr}), {region} region, {counties} counties\n\
              Population (2025 estimate): {pop}; {nonpermit:.1}% live in counties where no place issues building permits (homes built there aren't counted)\n\
@@ -223,10 +309,16 @@ impl StateBaseline {
              Average per year {first}-{last}: {avg}; per 100,000 residents per year: {per100k:.0}\n\
              {last} mix of NEW permits by building size (not the existing housing stock): 1 unit {s1:.0}%, 2 units {s2:.0}%, 3-4 units {s3:.0}%, 5+ units {s5:.0}%\n\
              Existing homes (ACS 2020-2024): {hu} units; single-family detached {sfd}, buildings with 5+ units {mf}\n\
-             FIVE-YEAR BASELINE (current rules, recent pace continues): central {central} units permitted (range {low} to {high}); about {ccentral} completed (range {clow} to {chigh})\n\
-             Rule: average annual permits x 5; range = slowest and fastest year x 5. Completed = permits x {ratio:.0}% ({region} region: completions vs permits a year earlier, 2016-2025). Homes take about {m1:.0} months (single-family) or {m2:.0} months (2+ units) from permit to completion.\n\
+             FIVE-YEAR BASELINE {y1}-{y5} (current rules; county permit model, recent conditions continue): central {central} units permitted (range {low} to {high}); \
+             {starts} construction starts; {done} homes completed (including homes already in the pipeline from earlier permits)\n\
+             Baseline permits by year: {pby}. Completions by year: {cby}. Forecast mix: 1 unit {m1:.0}%, 2-4 units {m2:.0}%, 5+ units {m5:.0}%\n\
+             Method: each county's permits forecast from its own recent permits, population, net migration, house prices and the 10-year Treasury rate, summed to the state. \
+             Range = the model's back-test errors (10th-90th percentile; median state error {med:.0}% vs {pmed:.0}% for repeating the last five years). \
+             For comparison, repeating the {first}-{last} pace gives {pace}.\n\
+             Timing ({region} region, Survey of Construction 2015-2024 permit cohorts): {sr1:.0}% of single-family and {sr5:.0}% of 2+ unit permits start construction; \
+             permit to completion takes about {t1:.0} months (single-family) or {t5:.0} months (5+ units).\n\
              Conversion: a rate of 1 unit per 100,000 residents per year = {conv:.0} units per year statewide (use the state.scale_rate tool rather than doing this by hand).\n\
-             Source: Census Building Permits Survey, Population Estimates, ACS and Survey of Construction (public domain); provenance {PROVENANCE}",
+             Source: Census Building Permits Survey, Population Estimates, ACS and Survey of Construction; FHFA HPI; U.S. Treasury (all public domain); provenance {PROVENANCE}",
             name = self.name,
             abbr = self.abbr,
             region = self.region,
@@ -245,15 +337,25 @@ impl StateBaseline {
             hu = thousands(self.stock.total),
             sfd = pct(self.stock.sf_detached_share()),
             mf = pct(self.stock.multifamily_share()),
+            y1 = crate::forecast::LAST_YEAR + 1,
+            y5 = crate::forecast::LAST_YEAR + HORIZON_YEARS as u32,
             central = thousands(b.central),
             low = thousands(b.low),
             high = thousands(b.high),
-            ccentral = thousands(bc.central),
-            clow = thousands(bc.low),
-            chigh = thousands(bc.high),
-            ratio = 100.0 * c.ratio.min(1.0),
-            m1 = c.months_1unit,
-            m2 = c.months_2plus,
+            starts = thousands(flow.total_starts().round() as u64),
+            done = thousands(flow.total_completions().round() as u64),
+            pby = by_year(&flow.permits),
+            cby = by_year(&flow.completions),
+            m1 = 100.0 * mix[0],
+            m2 = 100.0 * mix[1],
+            m5 = 100.0 * mix[2],
+            med = 100.0 * bt.model.median_abs_pct_error,
+            pmed = 100.0 * bt.recent_pace.median_abs_pct_error,
+            pace = thousands(pace.central),
+            sr1 = 100.0 * c1.start_rate,
+            sr5 = 100.0 * c5.start_rate,
+            t1 = c1.months_to_start + c1.months_to_complete,
+            t5 = c5.months_to_start + c5.months_to_complete,
             conv = self.per_100k(),
         )
     }
@@ -425,36 +527,6 @@ pub fn counties() -> &'static [County] {
     })
 }
 
-/// Completion factors for a Census region (falls back to the U.S.).
-pub fn completion(region: &str) -> Completion {
-    static TABLE: OnceLock<HashMap<String, Completion>> = OnceLock::new();
-    let t = TABLE.get_or_init(|| {
-        let t = Table::parse(COMPLETION_CSV);
-        t.rows
-            .iter()
-            .map(|r| {
-                let f = |c: &str| {
-                    r[t.col(c)]
-                        .trim()
-                        .parse::<f64>()
-                        .expect("completion factor")
-                };
-                (
-                    r[t.col("region")].clone(),
-                    Completion {
-                        ratio: f("completion_ratio"),
-                        months_1unit: f("months_permit_to_completion_1unit"),
-                        months_2plus: f("months_permit_to_completion_2plus"),
-                    },
-                )
-            })
-            .collect()
-    });
-    *t.get(region)
-        .or_else(|| t.get("united_states"))
-        .expect("U.S. completion factors")
-}
-
 /// National housing-stock shares, for comparing a county or state with the
 /// U.S. as a whole.
 pub fn national_stock() -> Stock {
@@ -554,50 +626,42 @@ mod tests {
     }
 
     #[test]
-    fn baseline_follows_the_stated_rule() {
+    fn baseline_is_the_sum_of_county_forecasts_with_backtest_range() {
         let s = find("DE").unwrap();
-        let total: u64 = s.permits.iter().map(|p| p.1).sum();
-        let b = s.baseline();
-        // central = average x 5 = the five-year sum when the window is five years
-        assert_eq!(b.central, total);
-        assert_eq!(b.low, s.permits.iter().map(|p| p.1).min().unwrap() * 5);
-        assert_eq!(b.high, s.permits.iter().map(|p| p.1).max().unwrap() * 5);
-        assert!(b.low <= b.central && b.central <= b.high);
-        let bc = s.baseline_completions();
-        assert!(bc.central < b.central && bc.low <= bc.central && bc.central <= bc.high);
-    }
-
-    #[test]
-    fn completion_factors_are_plausible_and_used_by_region() {
-        for r in ["united_states", "northeast", "midwest", "south", "west"] {
-            let c = completion(r);
-            assert!((0.6..=1.2).contains(&c.ratio), "{r} ratio {}", c.ratio);
-            assert!(
-                c.months_1unit > 3.0 && c.months_2plus > c.months_1unit,
-                "{r}"
-            );
-        }
-        assert_eq!(
-            find("PA").unwrap().completion().ratio,
-            completion("northeast").ratio
-        );
-    }
-
-    #[test]
-    fn finished_by_horizon_follows_the_timing_rule() {
-        // Year-1 permits with a 12-month build all finish; year-5 permits
-        // with a 12-month build finish only if issued at the very start.
-        assert_eq!(finished_by_horizon(1, 12.0), 1.0);
-        assert_eq!(finished_by_horizon(5, 12.0), 0.0);
-        assert!((finished_by_horizon(5, 6.0) - 0.5).abs() < 1e-12);
-        let s = find("PA").unwrap();
-        let path = [100.0; 5];
-        let done = s.completions_from_path(&path, 1.0);
-        let c = s.completion();
-        let expected: f64 = (1..=5)
-            .map(|y| 100.0 * c.ratio.min(1.0) * finished_by_horizon(y, c.months_1unit))
+        let f = crate::forecast::default_forecasts();
+        let sum: f64 = s
+            .counties()
+            .iter()
+            .filter_map(|c| f.get(&c.key()))
+            .map(|v| v.iter().map(|y| y.iter().sum::<f64>()).sum::<f64>())
             .sum();
-        assert!((done - expected).abs() < 1e-9 && done < 500.0);
+        let b = s.baseline();
+        assert_eq!(b.central, sum.round() as u64);
+        let (lo, hi) = range_multipliers();
+        assert!(lo < 1.0 && hi > 1.0);
+        assert_eq!(b.low, (sum * lo).round() as u64);
+        assert!(b.low <= b.central && b.central <= b.high);
+        // The old rule is still available for comparison.
+        let total: u64 = s.permits.iter().map(|p| p.1).sum();
+        assert_eq!(s.recent_pace().central, total);
+    }
+
+    #[test]
+    fn baseline_flow_counts_the_pipeline_and_lags_permits() {
+        for s in all() {
+            let flow = s.baseline_flow(&Conditions::default());
+            assert_eq!(flow.permits.len(), 5);
+            // Year 1 completions come mostly from homes permitted before 2026.
+            assert!(flow.completions[0] > 0.0, "{}", s.abbr);
+            assert!(flow.total_starts() <= flow.total_permits() * 1.2 + 1.0);
+            let bc = s.baseline_completions();
+            assert!(bc.low <= bc.central && bc.central <= bc.high);
+        }
+        // Prior permits by type add up to the state's own annual totals.
+        let s = find("PA").unwrap();
+        let prior = s.prior_by_type();
+        let last = s.permits.last().unwrap().1 as f64;
+        assert!((prior[0].iter().sum::<f64>() - last).abs() < 0.5);
     }
 
     #[test]
@@ -605,7 +669,8 @@ mod tests {
         let p = find("PA").unwrap().profile();
         assert!(p.contains("FIVE-YEAR BASELINE"));
         assert!(p.contains("units authorized by permit"));
-        assert!(p.contains("completed"));
+        assert!(p.contains("homes completed"));
+        assert!(p.contains("county permit model"));
         assert!(p.contains(PROVENANCE));
     }
 

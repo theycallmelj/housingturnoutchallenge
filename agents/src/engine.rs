@@ -6,24 +6,28 @@
 //! computed **per county and summed to the state**:
 //!
 //! ```text
-//! county base   = population/100k (ADU) or average annual permits (others)
-//! county weight = how much of the county's housing the reform touches vs. the
-//!                 U.S. (single-family detached share for ADU and missing
-//!                 middle; 5+-unit share for TOD and parking; 1 for fees),
-//!                 capped to a bounded range
-//! state annual  = sum over counties (base x weight) x the scenario's factors
-//!                 x implementation share
-//! year y        = state annual x ramp[y]
-//! completed     = each year's added permits x the region's completion ratio
-//!                 x the share finished before year 5 ends (permit-to-
-//!                 completion months for that building type)
+//! county base[y] = population/100k (ADU), or the county's baseline permit
+//!                  forecast for year y (others; see crate::forecast)
+//! county weight  = how much of the county's housing the reform touches vs.
+//!                  the U.S. (single-family detached share for ADU and missing
+//!                  middle; 5+-unit share for TOD and parking; 1 for fees),
+//!                  capped to a bounded range
+//! added[y]       = sum over counties (base[y] x weight) x the scenario's
+//!                  factors x implementation share x ramp[y]
+//! starts, completions = added permits through the Survey of Construction
+//!                  curves for the reform's building type (crate::timing)
 //! ```
+//!
+//! Because the base follows the baseline forecast, changing economic
+//! conditions ([`Conditions`]) moves both the baseline and the reforms' effects.
 //!
 //! The low estimate uses every low_case value together, the high estimate
 //! every high_case value. Sensitivity swings one assumption at a time
 //! between its low and high case with the rest at central.
 
+use crate::forecast::Conditions;
 use crate::state::{thousands, StateBaseline, HORIZON_YEARS};
+use crate::timing::{BType, Flow};
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -100,8 +104,8 @@ pub struct ScenarioSpec {
     /// `multifamily` or `none`.
     #[serde(default = "none")]
     pub exposure: String,
-    /// Building type for permit-to-completion timing: `1unit`, `2plus` or
-    /// `state_mix` (the state's latest permit mix).
+    /// Building type for permit-to-completion timing: `1unit`, `2to4`,
+    /// `5plus` or `state_mix` (the state's forecast permit mix).
     #[serde(default = "state_mix")]
     pub building_type: String,
     pub formula: String,
@@ -208,12 +212,21 @@ pub struct Estimate {
     pub exposure_factor: f64,
     /// Counties contributing most to the central estimate.
     pub top_counties: Vec<(String, f64)>,
+    /// Conditions the baseline and effects assume.
+    pub conditions: Conditions,
+    /// Central added permits, construction starts and completions by year.
+    pub added: Flow,
+    /// Central baseline permits, starts and completions by year (completions
+    /// include homes permitted before the horizon).
+    pub baseline: Flow,
+    /// First horizon year (e.g. 2026).
+    pub first_year: u32,
 }
 
 /// The state's county-weighted base for one scenario.
 struct Base {
-    /// Sum over counties of base x weight.
-    effective: f64,
+    /// Sum over counties of base[y] x weight, per horizon year.
+    effective: Vec<f64>,
     /// effective / unweighted base: the state's net weight.
     factor: f64,
     /// (county name, share of `effective`), largest first.
@@ -272,36 +285,50 @@ impl Assumptions {
         }
     }
 
-    /// Sum the scenario's base over the state's counties, weighted.
-    fn base(&self, spec: &ScenarioSpec, s: &StateBaseline) -> Base {
+    /// Sum the scenario's base over the state's counties, weighted, per
+    /// horizon year. `forecasts` are the county baseline forecasts.
+    fn base(
+        &self,
+        spec: &ScenarioSpec,
+        s: &StateBaseline,
+        forecasts: &std::collections::HashMap<String, Vec<[f64; 3]>>,
+    ) -> Base {
+        let h = HORIZON_YEARS as usize;
         let mut raw = 0.0;
-        let mut effective = 0.0;
+        let mut effective = vec![0.0; h];
         let mut by_county = Vec::new();
         for c in s.counties() {
             // Per-capita rates only count residents of permit-issuing counties:
             // the outcome is permits, and homes built elsewhere aren't counted.
-            let b = match spec.base.as_str() {
+            let path: Vec<f64> = match spec.base.as_str() {
                 "population_per_100k" if c.permit_issuing => {
-                    c.population.unwrap_or(0) as f64 / 100_000.0
+                    vec![c.population.unwrap_or(0) as f64 / 100_000.0; h]
                 }
-                "population_per_100k" => 0.0,
-                _ => c.average_annual(),
+                "population_per_100k" => vec![0.0; h],
+                _ => forecasts
+                    .get(&c.key())
+                    .map(|v| v.iter().map(|y| y.iter().sum()).collect())
+                    .unwrap_or_else(|| vec![0.0; h]),
             };
-            if b <= 0.0 {
+            let total: f64 = path.iter().sum();
+            if total <= 0.0 {
                 continue;
             }
             let w = self.county_weight(spec, c, s);
-            raw += b;
-            effective += b * w;
-            by_county.push((c.name.clone(), b * w));
+            raw += total;
+            for (e, b) in effective.iter_mut().zip(&path) {
+                *e += b * w;
+            }
+            by_county.push((c.name.clone(), total * w));
         }
+        let eff_total: f64 = effective.iter().sum();
         by_county.sort_by(|a, b| b.1.total_cmp(&a.1));
         for x in &mut by_county {
-            x.1 /= effective.max(f64::MIN_POSITIVE);
+            x.1 /= eff_total.max(f64::MIN_POSITIVE);
         }
         Base {
+            factor: if raw > 0.0 { eff_total / raw } else { 1.0 },
             effective,
-            factor: if raw > 0.0 { effective / raw } else { 1.0 },
             by_county,
         }
     }
@@ -312,28 +339,62 @@ impl Assumptions {
     fn compute(
         &self,
         spec: &ScenarioSpec,
-        base: f64,
+        base: &[f64],
         default: Case,
         cases: &BTreeMap<&str, Case>,
         ramp_case: Case,
     ) -> (f64, Vec<f64>) {
-        let annual: f64 = self
+        let factor: f64 = self
             .params_for(spec)
             .iter()
             .map(|(name, p)| p.factor(*cases.get(name).unwrap_or(&default)))
-            .product::<f64>()
-            * base;
+            .product::<f64>();
         let by_year: Vec<f64> = self
             .shared
             .ramp
             .value(ramp_case)
             .iter()
-            .map(|r| annual * r)
+            .zip(base)
+            .map(|(r, b)| factor * b * r)
             .collect();
         (by_year.iter().sum(), by_year)
     }
 
+    /// Starts and completions for a path of added permits, by the scenario's
+    /// building type. Added permits have no pipeline before the horizon.
+    fn added_flow(
+        &self,
+        spec: &ScenarioSpec,
+        s: &StateBaseline,
+        path: &[f64],
+        mix: [f64; 3],
+    ) -> Flow {
+        let shares = match spec.building_type.as_str() {
+            "1unit" => [1.0, 0.0, 0.0],
+            "2to4" => [0.0, 1.0, 0.0],
+            "5plus" => [0.0, 0.0, 1.0],
+            _ => mix,
+        };
+        let mut out = Flow::default();
+        for (k, b) in BType::ALL.into_iter().enumerate() {
+            if shares[k] > 0.0 {
+                let p: Vec<f64> = path.iter().map(|x| x * shares[k]).collect();
+                out.add(&crate::timing::flow(&s.region, b, &p, &[]));
+            }
+        }
+        out
+    }
+
     pub fn estimate(&self, scenario: &str, s: &StateBaseline) -> Result<Estimate> {
+        self.estimate_with(scenario, s, &Conditions::default())
+    }
+
+    pub fn estimate_with(
+        &self,
+        scenario: &str,
+        s: &StateBaseline,
+        cond: &Conditions,
+    ) -> Result<Estimate> {
         let spec = self.scenario(scenario).ok_or_else(|| {
             anyhow!(
                 "unknown scenario '{scenario}'; expected one of: {}",
@@ -344,19 +405,18 @@ impl Assumptions {
                     .join(", ")
             )
         })?;
-        let base = self.base(spec, s);
-        let eb = base.effective;
+        let forecasts = crate::forecast::forecasts_for(cond);
+        let fc = s.forecast_from(&forecasts);
+        let mix = fc.mix();
+        let base = self.base(spec, s, &forecasts);
+        let eb = &base.effective;
         let none = BTreeMap::new();
         let (low, low_path) = self.compute(spec, eb, Case::Low, &none, Case::Low);
         let (central, central_by_year) =
             self.compute(spec, eb, Case::Central, &none, Case::Central);
         let (high, high_path) = self.compute(spec, eb, Case::High, &none, Case::High);
-        let one_unit = match spec.building_type.as_str() {
-            "1unit" => 1.0,
-            "2plus" => 0.0,
-            _ => s.one_unit_share(),
-        };
-        let done = |path: &[f64]| s.completions_from_path(path, one_unit);
+        let done = |path: &[f64]| self.added_flow(spec, s, path, mix).total_completions();
+        let added = self.added_flow(spec, s, &central_by_year, mix);
 
         let mut sensitivity: Vec<Sensitivity> = self
             .params_for(spec)
@@ -389,7 +449,8 @@ impl Assumptions {
         });
         sensitivity.sort_by(|a, b| (b.high - b.low).total_cmp(&(a.high - a.low)));
 
-        let b = s.baseline();
+        let b = s.baseline_with(cond);
+        let baseline = s.flow_for(&fc);
         Ok(Estimate {
             scenario: spec.id.clone(),
             label: spec.label.clone(),
@@ -401,9 +462,9 @@ impl Assumptions {
             central,
             high,
             completed_low: done(&low_path),
-            completed_central: done(&central_by_year),
+            completed_central: added.total_completions(),
             completed_high: done(&high_path),
-            baseline_completed_central: s.baseline_completions().central,
+            baseline_completed_central: baseline.total_completions().round() as u64,
             central_by_year,
             sensitivity,
             exposure_factor: base.factor,
@@ -413,6 +474,10 @@ impl Assumptions {
                 .take(5)
                 .map(|(n, sh)| (n, sh * central))
                 .collect(),
+            conditions: *cond,
+            added,
+            baseline,
+            first_year: crate::forecast::LAST_YEAR + 1,
         })
     }
 
@@ -423,14 +488,25 @@ impl Assumptions {
             .scenario(&e.scenario)
             .expect("estimate comes from a known scenario");
         let pct = |x: f64| 100.0 * x / e.baseline_central as f64;
+        let yr = |v: &[f64]| {
+            v.iter()
+                .enumerate()
+                .map(|(i, x)| format!("{} {}", e.first_year + i as u32, round10(*x)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let mut out = format!(
             "MODEL ESTIMATE {label}, {name} ({abbr})\n\
              Reform: {bench}\n\
+             Baseline {y1}-{y5} (current rules; county permit model; {cond}): {base} units permitted (range {blo} to {bhi}), \
+             {bstarts} construction starts, {bc} homes completed.\n\
              Additional units authorized by permit over {h} years: central {c} (range {lo} to {hi}); \
              {cp:.1}% of the five-year baseline of {base} (range {plo:.1}% to {phi:.1}%).\n\
              Completed within {h} years: central {cc} (range {clo} to {chi}), vs. about {bc} baseline homes completed; \
-             homes permitted late in the window finish after it.\n\
-             Central by year (permits): {years}\n\
+             homes permitted late in the window finish after it, and some permits never start ({timing}).\n\
+             Added permits by year (central): {years}\n\
+             Added construction starts by year: {starts}\n\
+             Added completions by year: {comps}\n\
              {weight}\n\
              Largest county contributions (central): {top}\n\
              Formula: {formula}\n",
@@ -446,7 +522,21 @@ impl Assumptions {
             base = thousands(e.baseline_central),
             plo = pct(e.low),
             phi = pct(e.high),
-            years = e.central_by_year.iter().enumerate().map(|(i, v)| format!("y{} {}", i + 1, round10(*v))).collect::<Vec<_>>().join(", "),
+            years = yr(&e.central_by_year),
+            starts = yr(&e.added.starts),
+            comps = yr(&e.added.completions),
+            y1 = e.first_year,
+            y5 = e.first_year + HORIZON_YEARS as u32 - 1,
+            cond = e.conditions.describe(),
+            blo = thousands(e.baseline_low),
+            bhi = thousands(e.baseline_high),
+            bstarts = round10(e.baseline.total_starts()),
+            timing = match spec.building_type.as_str() {
+                "1unit" => "1-unit construction timing",
+                "2to4" => "2-4 unit construction timing",
+                "5plus" => "5+ unit construction timing",
+                _ => "timing for the state's permit mix",
+            },
             cc = round10(e.completed_central),
             clo = round10(e.completed_low),
             chi = round10(e.completed_high),
@@ -521,18 +611,25 @@ impl Assumptions {
 
     /// All five scenarios for one state, for side-by-side comparison.
     pub fn compare(&self, s: &StateBaseline) -> String {
-        let b = s.baseline();
+        self.compare_with(s, &Conditions::default())
+    }
+
+    pub fn compare_with(&self, s: &StateBaseline, cond: &Conditions) -> String {
+        let b = s.baseline_with(cond);
+        let flow = s.baseline_flow(cond);
         let mut out = format!(
-            "SCENARIO COMPARISON {name} ({abbr})\nFive-year baseline (current rules): {c} units authorized by permit (range {lo} to {hi}).\n\n\
+            "SCENARIO COMPARISON {name} ({abbr})\nFive-year baseline (current rules; county permit model; {cd}): {c} units authorized by permit (range {lo} to {hi}); {done} homes completed.\n\n\
              | Scenario | Additional units permitted, 5 yrs (central) | Range | Completed within 5 yrs (central) | % of baseline (central) | Most sensitive to |\n| --- | --- | --- | --- | --- | --- |\n",
             name = s.name,
             abbr = s.abbr,
             c = thousands(b.central),
             lo = thousands(b.low),
             hi = thousands(b.high),
+            cd = cond.describe(),
+            done = round10(flow.total_completions()),
         );
         for spec in &self.scenarios {
-            if let Ok(e) = self.estimate(&spec.id, s) {
+            if let Ok(e) = self.estimate_with(&spec.id, s, cond) {
                 out.push_str(&format!(
                     "| {} | {} | {} to {} | {} | {:.1}% | {} |\n",
                     e.label,
@@ -662,19 +759,34 @@ mod tests {
     #[test]
     fn uplift_central_matches_the_published_formula() {
         let s = state::find("WI").unwrap();
+        let ramp = [0.4, 0.7, 1.0, 1.0, 1.0];
+        let f = crate::forecast::default_forecasts();
+        let path = s.forecast(&Conditions::default()).path();
         let e = a().estimate("fees", s).unwrap();
-        // Fees are unweighted: baseline annual x 0.02 x 4.1 (no implementation share)
-        let expected = s.average_annual() * 0.02 * 4.1;
-        assert!((e.central - expected).abs() < 1e-6);
+        // Fees are unweighted: baseline forecast[y] x 0.02 x ramp[y] (no implementation share)
+        let expected: f64 = path.iter().zip(ramp).map(|(b, r)| b * 0.02 * r).sum();
+        assert!(
+            (e.central - expected).abs() < 1e-6,
+            "{} vs {expected}",
+            e.central
+        );
         assert!((e.exposure_factor - 1.0).abs() < 1e-12);
         let spec = a().scenarios.iter().find(|x| x.id == "tod").unwrap();
-        let base: f64 = s
-            .counties()
-            .into_iter()
-            .map(|c| c.average_annual() * a().county_weight(spec, c, s))
-            .sum();
+        let mut base = [0.0; 5];
+        for c in s.counties() {
+            if let Some(v) = f.get(&c.key()) {
+                for y in 0..5 {
+                    base[y] += v[y].iter().sum::<f64>() * a().county_weight(spec, c, s);
+                }
+            }
+        }
         let tod = a().estimate("tod", s).unwrap();
-        assert!((tod.central - base * 0.12 * 0.10 * 0.75 * 4.1).abs() < 1e-6);
+        let expected: f64 = base
+            .iter()
+            .zip(ramp)
+            .map(|(b, r)| b * 0.12 * 0.10 * 0.75 * r)
+            .sum();
+        assert!((tod.central - expected).abs() < 1e-6);
     }
 
     #[test]
@@ -717,10 +829,65 @@ mod tests {
             .estimate("missing_middle", state::find("WY").unwrap())
             .unwrap();
         assert!(ca.central > wy.central);
-        // Uplift scenarios are a share of each state's baseline scaled by its
-        // county weighting, so the share differs only by the exposure factor.
+        // Uplift scenarios are a share of each state's baseline forecast
+        // scaled by its county weighting and the ramp, so after removing the
+        // exposure factor the shares differ only through the forecast's shape.
         let share = |e: &Estimate| e.central / e.baseline_central as f64 / e.exposure_factor;
-        assert!((share(&ca) - share(&wy)).abs() < 1e-9);
+        assert!(
+            (share(&ca) / share(&wy) - 1.0).abs() < 0.05,
+            "{} {}",
+            share(&ca),
+            share(&wy)
+        );
+    }
+
+    #[test]
+    fn flows_report_permits_starts_and_completions_by_year() {
+        let s = state::find("PA").unwrap();
+        for spec in &a().scenarios {
+            let e = a().estimate(&spec.id, s).unwrap();
+            assert_eq!(e.added.permits.len(), 5);
+            for (x, y) in e.added.permits.iter().zip(&e.central_by_year) {
+                assert!((x - y).abs() < 1e-9);
+            }
+            assert!(e.added.total_starts() <= e.central + 1e-6);
+            assert!(e.added.total_completions() <= e.added.total_starts() + 1e-6);
+            assert!((e.added.total_completions() - e.completed_central).abs() < 1e-9);
+            assert_eq!(e.first_year, 2026);
+            // The baseline flow carries completions from earlier permits.
+            assert!(e.baseline.completions[0] > 0.0);
+        }
+        let text = a().explain(&a().estimate("missing_middle", s).unwrap(), s);
+        assert!(text.contains("Added construction starts by year"));
+        assert!(text.contains("2-4 unit construction timing"));
+        assert!(text.contains("county permit model"));
+    }
+
+    #[test]
+    fn conditions_move_the_baseline_and_the_effects_together() {
+        let s = state::find("TX").unwrap();
+        let base = a().estimate("missing_middle", s).unwrap();
+        let worse = Conditions {
+            rate_shift_pp: 2.0,
+            migration_factor: 0.0,
+            price_shift_pp: -5.0,
+        };
+        let e = a().estimate_with("missing_middle", s, &worse).unwrap();
+        assert_ne!(e.baseline_central, base.baseline_central);
+        // Uplift effects are proportional to the baseline path, so they move
+        // in the same direction as the baseline.
+        assert_eq!(
+            e.baseline_central < base.baseline_central,
+            e.central < base.central
+        );
+        // ADUs scale with population, not the permit forecast.
+        let adu = a().estimate("adu", s).unwrap();
+        let adu2 = a().estimate_with("adu", s, &worse).unwrap();
+        assert!((adu.central - adu2.central).abs() < 1e-9);
+        assert!(a().explain(&e, s).contains("net migration at 0%"));
+        assert!(a()
+            .compare_with(s, &worse)
+            .contains("10-year Treasury +2.00 points"));
     }
 
     #[test]

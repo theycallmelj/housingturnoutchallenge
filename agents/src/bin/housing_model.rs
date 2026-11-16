@@ -3,38 +3,54 @@
 //!     cargo run --manifest-path agents/Cargo.toml --bin housing-model -- --state PA
 //!     cargo run --manifest-path agents/Cargo.toml --bin housing-model -- --state PA --scenario adu
 //!     cargo run --manifest-path agents/Cargo.toml --bin housing-model -- --state PA --json
+//!     cargo run --manifest-path agents/Cargo.toml --bin housing-model -- --state PA --rate-shift 1 --migration 0.5
+//!
+//! Economic conditions (default: recent conditions continue): `--rate-shift`
+//! (10-year Treasury vs. 2025, points), `--migration` (net migration as a
+//! multiple of recent), `--price-shift` (annual house-price growth, points).
 //!
 //! Without `--scenario`, prints all five benchmark scenarios side by side,
 //! then each one's full explanation. Every number comes from Census data and
 //! `agents/assumptions/scenarios.json`.
 
-use housing_agents::{engine::Assumptions, state};
+use housing_agents::{engine::Assumptions, forecast::Conditions, state};
 
 fn main() -> anyhow::Result<()> {
     let mut state_arg = None;
     let mut scenario = None;
     let mut json = false;
+    let mut cond = serde_json::Map::new();
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--state" => state_arg = args.next(),
             "--scenario" => scenario = args.next(),
             "--json" => json = true,
+            "--rate-shift" | "--migration" | "--price-shift" => {
+                let key = match a.as_str() {
+                    "--rate-shift" => "rate_shift_pp",
+                    "--migration" => "migration_factor",
+                    _ => "price_shift_pp",
+                };
+                let v: f64 = args.next().and_then(|v| v.parse().ok()).ok_or_else(|| anyhow::anyhow!("{a} needs a number"))?;
+                cond.insert(key.into(), v.into());
+            }
             other => anyhow::bail!(
-                "unknown argument {other}\nusage: housing-model --state <code or name> [--scenario adu|missing_middle|tod|parking|fees] [--json]"
+                "unknown argument {other}\nusage: housing-model --state <code or name> [--scenario adu|missing_middle|tod|parking|fees] [--rate-shift N] [--migration N] [--price-shift N] [--json]"
             ),
         }
     }
     let q = state_arg.ok_or_else(|| anyhow::anyhow!("--state is required (e.g. --state PA)"))?;
     let s = state::find(&q).ok_or_else(|| anyhow::anyhow!("unknown state '{q}'"))?;
     let a = Assumptions::bundled();
+    let cond = Conditions::from_args(&serde_json::Value::Object(cond));
     let ids: Vec<String> = match scenario {
         Some(id) => vec![id],
         None => a.scenarios.iter().map(|x| x.id.clone()).collect(),
     };
     let estimates = ids
         .iter()
-        .map(|id| a.estimate(id, s))
+        .map(|id| a.estimate_with(id, s, &cond))
         .collect::<anyhow::Result<Vec<_>>>()?;
 
     if json {
@@ -42,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
     if estimates.len() > 1 {
-        println!("{}\n", a.compare(s));
+        println!("{}\n", a.compare_with(s, &cond));
     }
     for e in &estimates {
         println!("{}\n", a.explain(e, s));

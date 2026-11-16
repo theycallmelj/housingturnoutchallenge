@@ -87,7 +87,7 @@ impl Tool for StateProfile {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "state.profile".into(),
-            description: "Statewide population, housing units permitted per year 2021-2025, and the five-year current-rules baseline for {state} (USPS code or name).".into(),
+            description: "Statewide population, housing units permitted per year 2021-2025, the five-year current-rules baseline forecast for {state} (USPS code or name) in permits, construction starts and completions, and permit-to-completion timing.".into(),
         }
     }
     async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
@@ -223,7 +223,7 @@ impl Tool for ScenarioEstimate {
         ToolSpec {
             name: format!("{}.estimate", self.scenario),
             description: format!(
-                "Run the scenario model for the {} benchmark in {{state}}: additional units over five years vs. the baseline (low/central/high), what it is most sensitive to, the assumptions with sources, and known gaps.",
+                "Run the scenario model for the {} benchmark in {{state}}: additional units permitted, started and completed by year over five years vs. the baseline (low/central/high), what it is most sensitive to, the assumptions with sources, and known gaps. Optional economic conditions vs. recent levels: {{rate_shift_pp}} (10-year Treasury, points), {{migration_factor}} (1 = recent net migration), {{price_shift_pp}} (annual house-price growth, points).",
                 self.scenario
             ),
         }
@@ -232,7 +232,11 @@ impl Tool for ScenarioEstimate {
         let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
         let s = crate::state::find(q).ok_or_else(|| anyhow!("unknown state '{q}'"))?;
         let a = crate::engine::Assumptions::bundled();
-        let e = a.estimate(&self.scenario, s)?;
+        let e = a.estimate_with(
+            &self.scenario,
+            s,
+            &crate::forecast::Conditions::from_args(&args),
+        )?;
         Ok(a.explain(&e, s))
     }
 }
@@ -245,12 +249,13 @@ impl Tool for CompareScenarios {
     fn spec(&self) -> ToolSpec {
         ToolSpec {
             name: "modeling.compare_scenarios".into(),
-            description: "Compare all five benchmark scenarios for {state}: central and range of additional units over five years, share of the baseline, and the most influential assumption for each.".into(),
+            description: "Compare all five benchmark scenarios for {state}: central and range of additional units permitted and completed over five years, share of the baseline, and the most influential assumption for each. Optional {rate_shift_pp}, {migration_factor}, {price_shift_pp} change economic conditions.".into(),
         }
     }
     async fn call(&self, args: Value, _svc: &GuardedServices) -> Result<String> {
         let q = str_arg(&args, "state").ok_or_else(|| anyhow!("missing string arg 'state'"))?;
         let s = crate::state::find(q).ok_or_else(|| anyhow!("unknown state '{q}'"))?;
-        Ok(crate::engine::Assumptions::bundled().compare(s))
+        Ok(crate::engine::Assumptions::bundled()
+            .compare_with(s, &crate::forecast::Conditions::from_args(&args)))
     }
 }

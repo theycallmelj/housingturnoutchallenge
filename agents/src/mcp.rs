@@ -52,16 +52,24 @@ fn tool_list() -> Value {
         },
         {
             "name": "estimate_scenario",
-            "description": "Run the scenario model for one benchmark scenario in one state: additional housing units authorized over five years vs. the current-rules baseline (low/central/high), sensitivity, assumptions with sources, and known gaps. Deterministic; no language model involved.",
+            "description": "Run the scenario model for one benchmark scenario in one state: additional housing units permitted, started and completed by year over five years vs. the current-rules baseline forecast (low/central/high), sensitivity, assumptions with sources, and known gaps. Optional economic conditions. Deterministic; no language model involved.",
             "inputSchema": {"type": "object", "properties": {
                 "state": {"type": "string"},
-                "scenario": {"type": "string", "enum": ["adu", "missing_middle", "tod", "parking", "fees"]}
+                "scenario": {"type": "string", "enum": ["adu", "missing_middle", "tod", "parking", "fees"]},
+                "rate_shift_pp": {"type": "number", "description": "10-year Treasury vs. its 2025 average, percentage points (-3 to 5)"},
+                "migration_factor": {"type": "number", "description": "net migration as a multiple of each county's recent rate (1 = unchanged)"},
+                "price_shift_pp": {"type": "number", "description": "annual house-price growth vs. recent, points (-20 to 20)"}
             }, "required": ["state", "scenario"]}
         },
         {
             "name": "compare_scenarios",
-            "description": "All five benchmark scenarios side by side for one state: central and range of additional units over five years, share of the baseline, and each one's most influential assumption.",
-            "inputSchema": {"type": "object", "properties": {"state": {"type": "string"}}, "required": ["state"]}
+            "description": "All five benchmark scenarios side by side for one state: central and range of additional units permitted and completed over five years, share of the baseline, and each one's most influential assumption. Optional economic conditions.",
+            "inputSchema": {"type": "object", "properties": {
+                "state": {"type": "string"},
+                "rate_shift_pp": {"type": "number", "description": "10-year Treasury vs. its 2025 average, percentage points (-3 to 5)"},
+                "migration_factor": {"type": "number", "description": "net migration as a multiple of each county's recent rate (1 = unchanged)"},
+                "price_shift_pp": {"type": "number", "description": "annual house-price growth vs. recent, points (-20 to 20)"}
+            }, "required": ["state"]}
         },
         {
             "name": "state_baseline",
@@ -147,10 +155,13 @@ fn call_tool(o: &Ontology, name: &str, args: &Value) -> Value {
         "estimate_scenario" => {
             let model = crate::engine::Assumptions::bundled();
             match (s("state").and_then(crate::state::find), s("scenario")) {
-                (Some(st), Some(sc)) => match model.estimate(sc, st) {
-                    Ok(e) => text_result(model.explain(&e, st), false),
-                    Err(e) => text_result(e.to_string(), true),
-                },
+                (Some(st), Some(sc)) => {
+                    match model.estimate_with(sc, st, &crate::forecast::Conditions::from_args(args))
+                    {
+                        Ok(e) => text_result(model.explain(&e, st), false),
+                        Err(e) => text_result(e.to_string(), true),
+                    }
+                }
                 _ => text_result(
                     "need a known state and a scenario (adu, missing_middle, tod, parking, fees)"
                         .into(),
@@ -159,7 +170,11 @@ fn call_tool(o: &Ontology, name: &str, args: &Value) -> Value {
             }
         }
         "compare_scenarios" => match s("state").and_then(crate::state::find) {
-            Some(st) => text_result(crate::engine::Assumptions::bundled().compare(st), false),
+            Some(st) => text_result(
+                crate::engine::Assumptions::bundled()
+                    .compare_with(st, &crate::forecast::Conditions::from_args(args)),
+                false,
+            ),
             None => text_result(
                 "unknown state; use a USPS code like CA or a full name".into(),
                 true,

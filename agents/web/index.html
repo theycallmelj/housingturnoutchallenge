@@ -56,6 +56,13 @@
   .check.flag { background: var(--warn-soft); color: var(--warn); }
   details { margin-top: 12px; }
   details pre { white-space: pre-wrap; font: 12px/1.5 ui-monospace, Menlo, monospace; background: #fafbfd; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; max-height: 260px; overflow: auto; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .controls label { font-size: 13px; display: flex; justify-content: space-between; }
+  .controls input[type=range] { width: 100%; }
+  .controls output { font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+  table.years td, table.years th { padding: 6px 10px; font-size: 13.5px; }
+  table.years td.num { text-align: right; }
+  .link { background: none; color: var(--accent); padding: 0; font-weight: 600; }
   footer { max-width: 1120px; margin: 0 auto; padding: 0 32px 32px; color: var(--muted); font-size: 12.5px; }
 </style>
 </head>
@@ -69,23 +76,33 @@
     <div class="row">
       <div><label for="state">State</label><br><select id="state"></select></div>
       <div>
-        <div class="muted">Five-year baseline (current rules)</div>
+        <div class="muted">Five-year baseline, 2026-2030 (current rules)</div>
         <div class="big" id="baseline">–</div>
         <div class="muted" id="baseline-range"></div>
       </div>
       <div>
-        <div class="muted">Housing units permitted per year</div>
+        <div class="muted">Units permitted per year, 2021-2025</div>
         <div class="bars" id="permits"></div>
       </div>
     </div>
-    <p class="note">Baseline = average annual units permitted 2021-2025 × 5 (range: slowest and fastest year × 5). Source: Census Building Permits Survey and Population Estimates (public domain).</p>
+    <table class="years" style="margin-top:22px">
+      <thead><tr id="years-head"></tr></thead>
+      <tbody id="years-body"></tbody>
+    </table>
+    <div class="controls">
+      <div><label for="rate">10-year Treasury vs. 2025 <output id="rate-out"></output></label><input id="rate" type="range" min="-3" max="5" step="0.25" value="0"></div>
+      <div><label for="migration">Net migration vs. recent <output id="migration-out"></output></label><input id="migration" type="range" min="0" max="2" step="0.1" value="1"></div>
+      <div><label for="price">House-price growth vs. recent <output id="price-out"></output></label><input id="price" type="range" min="-10" max="10" step="1" value="0"></div>
+      <div style="align-self:end"><button class="link" id="reset">Reset to recent conditions</button></div>
+    </div>
+    <p class="note" id="method-note">Baseline: each county's permits forecast by a statistical model from its recent permits, population, net migration, house prices and the 10-year Treasury rate, then summed to the state. Starts and completions use Survey of Construction timing, including homes already in the pipeline. Sources: Census BPS, PEP, ACS and SOC; FHFA HPI; U.S. Treasury (public domain).</p>
   </section>
 
   <section class="card">
     <h2>Scenario comparison</h2>
     <p class="sub">Additional housing units authorized by permit over five years vs. the baseline, computed county by county and summed to the state, plus how many of them are finished within the five years. Bars show the low-high range; the blue mark is the central estimate. Click a scenario for its formula, sensitivity, assumptions and sources.</p>
     <table>
-      <thead><tr><th>Scenario</th><th>Permitted (central)</th><th>Range</th><th></th><th>Completed in 5 yrs</th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Permitted (central)</th><th>Range</th><th></th><th>Completed by 2030</th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
       <tbody id="scenarios"></tbody>
     </table>
     <p class="note">Scenarios are estimated separately and shouldn't be added together: they overlap and interact. Assumptions are first-pass and editable in <code>agents/assumptions/scenarios.json</code>.</p>
@@ -102,7 +119,7 @@
     <div id="result"></div>
   </section>
 </main>
-<footer>Evidence-anchored estimates, not forecasts. Permits are not completions. See MODEL.md for the method and its limits.</footer>
+<footer>The baseline is a statistical forecast with a back-tested range; reform effects are evidence-anchored estimates, not forecasts. Permits are not completions. See MODEL.md for the method and its limits.</footer>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -147,10 +164,27 @@ async function loadStates() {
   await loadCompare();
 }
 
+function conditions() {
+  const r = +$("rate").value, m = +$("migration").value, p = +$("price").value;
+  $("rate-out").textContent = (r > 0 ? "+" : "") + r.toFixed(2) + " pts";
+  $("migration-out").textContent = Math.round(100 * m) + "%";
+  $("price-out").textContent = (p > 0 ? "+" : "") + p + " pts/yr";
+  return `&rate=${r}&migration=${m}&price=${p}`;
+}
+
+let pending;
 async function loadCompare() {
-  const d = await (await fetch("/api/compare?state=" + $("state").value)).json();
+  const q = "/api/compare?state=" + $("state").value + conditions();
+  pending = q;
+  const d = await (await fetch(q)).json();
+  if (pending !== q) return; // a newer request is on its way
   $("baseline").textContent = fmt(d.baseline.central) + " units";
-  $("baseline-range").textContent = "range " + fmt(d.baseline.low) + " to " + fmt(d.baseline.high);
+  $("baseline-range").textContent = `range ${fmt(d.baseline.low)} to ${fmt(d.baseline.high)} · ${fmt(d.baseline_completed)} homes completed · repeating 2021-2025 would give ${fmt(d.recent_pace)}`;
+  const by = d.baseline_by_year;
+  $("years-head").innerHTML = "<th>Baseline</th>" + by.years.map((y) => `<th style="text-align:right">${y}</th>`).join("") + '<th style="text-align:right">Total</th>';
+  const row = (name, v) => `<tr><td class="muted">${name}</td>${v.map((x) => `<td class="num">${fmt10(x)}</td>`).join("")}<td class="num">${fmt10(v.reduce((a, b) => a + b, 0))}</td></tr>`;
+  $("years-body").innerHTML = row("Permits", by.permits) + row("Construction starts", by.starts) + row("Homes completed", by.completions);
+  $("method-note").title = d.conditions.description;
   const max = Math.max(...d.permits.map((p) => p.units));
   $("permits").innerHTML = d.permits.map((p) => `<div style="height:${Math.max(6, 60 * p.units / max)}px" title="${p.year}: ${fmt(p.units)}"><span>${String(p.year).slice(2)}</span></div>`).join("");
   const top = Math.max(...d.scenarios.map((s) => s.high));
@@ -164,7 +198,11 @@ async function loadCompare() {
       <td class="num">${(100 * s.central / d.baseline.central).toFixed(1)}%</td>
       <td class="muted" style="font-size:13px">${esc(s.top_sensitivity || "")}</td>
     </tr>
-    <tr class="explain" id="explain-${k}"><td colspan="7"><pre>${esc(s.explanation)}</pre></td></tr>`).join("");
+    <tr class="explain" id="explain-${k}"><td colspan="7">
+      <table class="years" style="margin-bottom:10px"><thead><tr><th>Added</th>${by.years.map((y) => `<th style="text-align:right">${y}</th>`).join("")}</tr></thead><tbody>
+      ${["permits", "starts", "completions"].map((key) => `<tr><td class="muted">${{ permits: "Permits", starts: "Construction starts", completions: "Homes completed" }[key]}</td>${s.by_year[key].map((x) => `<td class="num">${fmt10(x)}</td>`).join("")}</tr>`).join("")}
+      </tbody></table>
+      <pre>${esc(s.explanation)}</pre></td></tr>`).join("");
   document.querySelectorAll("tr.scenario").forEach((tr) => tr.addEventListener("click", () => $("explain-" + tr.dataset.k).classList.toggle("open")));
 }
 
@@ -193,6 +231,8 @@ async function ask() {
 }
 
 $("state").addEventListener("change", loadCompare);
+for (const id of ["rate", "migration", "price"]) $(id).addEventListener("input", loadCompare);
+$("reset").addEventListener("click", () => { $("rate").value = 0; $("migration").value = 1; $("price").value = 0; loadCompare(); });
 $("ask").addEventListener("click", ask);
 loadStates();
 </script>
