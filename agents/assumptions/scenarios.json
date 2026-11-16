@@ -1,6 +1,6 @@
 {
   "meta": {
-    "outcome": "Additional housing units authorized by building permit over five years, relative to the current-rules baseline (Census Building Permits Survey definition).",
+    "outcome": "Additional housing units authorized by building permit over five years, relative to the current-rules baseline (Census Building Permits Survey definition), computed per county and summed to the state. Also reported: how many of those homes are completed within the five years.",
     "horizon_years": 5,
     "how_to_read": "Each parameter has a low_case, central and high_case value. The low estimate uses every low_case value together and the high estimate every high_case value, so the range is wide on purpose. low_case is always the value that gives the smaller effect. basis says whether a value comes from a study, the challenge rules, or a team assumption. Team assumptions should be revisited first.",
     "status": "First-pass evidence-anchored assumptions, set 2026-11-15. Values marked basis=assumption are judgment calls anchored to the cited studies, not estimates from them."
@@ -13,18 +13,48 @@
       "central": 0.75,
       "high_case": 1.0,
       "basis": "assumption",
-      "sources": ["lee_millard_ball_manville_2026", "wielga_2023_cityscape"],
+      "sources": [
+        "lee_millard_ball_manville_2026",
+        "wielga_2023_cityscape"
+      ],
       "rationale": "California's parking and ADU preemptions drew supportive, strategically supportive and resistant local responses, so a state law does not take full effect everywhere. No study gives a statewide share; 0.5-1.0 brackets partial to full compliance."
     },
     "ramp": {
       "label": "Share of the full annual effect reached in years 1-5",
       "unit": "share of full effect, by year",
-      "low_case": [0.2, 0.5, 0.8, 1.0, 1.0],
-      "central": [0.4, 0.7, 1.0, 1.0, 1.0],
-      "high_case": [0.7, 1.0, 1.0, 1.0, 1.0],
+      "low_case": [
+        0.2,
+        0.5,
+        0.8,
+        1.0,
+        1.0
+      ],
+      "central": [
+        0.4,
+        0.7,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "high_case": [
+        0.7,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
       "basis": "assumption",
-      "sources": ["garcia_2017_adu", "garcia_alameldin_2023", "greenaway_mcgrevy_2025_wp017"],
+      "sources": [
+        "garcia_2017_adu",
+        "garcia_alameldin_2023",
+        "greenaway_mcgrevy_2025_wp017"
+      ],
       "rationale": "Early ADU and SB 9 uptake was slow and grew over several years; Auckland's permits roughly doubled within five years rather than at once."
+    },
+    "exposure": {
+      "min": 0.25,
+      "max": 2.5,
+      "rationale": "Each county is weighted by how much of its housing the reform touches compared with the U.S. as a whole (ACS 2020-2024): single-family detached share for ADUs and missing middle, share of homes in 5+ unit buildings for transit-oriented density and parking. Weights are bounded to 0.25-2.5 so a handful of unusual counties can't dominate a state. This is a team assumption about exposure, not a measured elasticity."
     }
   },
   "scenarios": [
@@ -34,7 +64,9 @@
       "benchmark": "One detached or semi-detached ADU of at least 600 sq ft allowed on parcels with existing single-family homes; no additional parking required.",
       "base": "population_per_100k",
       "uses_implementation": true,
-      "formula": "additional ADU permits in year y = ADU rate per 100,000 residents x (population / 100,000) x (1 - legalization share) x implementation share x ramp[y]",
+      "exposure": "sf_detached",
+      "building_type": "1unit",
+      "formula": "for each permit-issuing county: ADU rate per 100,000 residents x (population / 100,000) x county weight (single-family detached share vs. U.S.); summed over counties, x (1 - legalization share) x implementation share x ramp[y]",
       "params": {
         "adu_rate_per_100k": {
           "label": "ADU permits per 100,000 residents per year once the law is in force",
@@ -43,7 +75,9 @@
           "central": 40,
           "high_case": 81,
           "basis": "study (low, high); assumption (central)",
-          "sources": ["pew_2026_adu"],
+          "sources": [
+            "pew_2026_adu"
+          ],
           "rationale": "Pew: cities under permissive ADU laws issued 81 permits per 100,000 residents in 2025, 26 outside California. Central is set nearer the non-California rate because most states lack California's decade of ADU reforms. These are gross rates in cities of 100,000+, so they likely overstate small-town and rural uptake."
         },
         "legalization_share": {
@@ -54,13 +88,16 @@
           "high_case": 0.0,
           "subtract": true,
           "basis": "assumption",
-          "sources": ["marantz_elmendorf_kim_2023", "crane_2020"],
+          "sources": [
+            "marantz_elmendorf_kim_2023",
+            "crane_2020"
+          ],
           "rationale": "Permits can legalize units that already exist, and a permitted ADU is not always occupied long-term housing. No study gives a share; 0-30% is a judgment bracket."
         }
       },
       "data_gaps": [
         "Census permits don't separate ADUs, so the state's current ADU rate can't be netted out. If the state already allows ADUs widely, the true increase is smaller.",
-        "Parcel counts and lot sizes (eligibility) aren't modeled; the per-capita rate stands in for them."
+        "Parcel counts and lot sizes aren't modeled; the per-capita rate weighted by each county's single-family share stands in for eligible lots."
       ]
     },
     {
@@ -69,7 +106,9 @@
       "benchmark": "2-6 dwelling units allowed on parcels currently restricted to single-family use, up to three stories; setbacks and lot coverage assumed not to bind.",
       "base": "baseline_annual_permits",
       "uses_implementation": true,
-      "formula": "additional permits in year y = baseline annual permits x missing-middle uplift x implementation share x ramp[y]",
+      "exposure": "sf_detached",
+      "building_type": "2plus",
+      "formula": "for each county: average annual permits x county weight (single-family detached share vs. U.S.); summed over counties, x missing-middle uplift x implementation share x ramp[y]",
       "params": {
         "mm_uplift": {
           "label": "Increase in total permits once the reform is fully in effect",
@@ -78,12 +117,18 @@
           "central": 0.06,
           "high_case": 0.15,
           "basis": "assumption anchored to studies",
-          "sources": ["garcia_alameldin_2023", "rose_institute_2024", "stacy_2023", "maltman_greenaway_mcgrevy_2024", "greenaway_mcgrevy_2025_wp017"],
+          "sources": [
+            "garcia_alameldin_2023",
+            "rose_institute_2024",
+            "stacy_2023",
+            "maltman_greenaway_mcgrevy_2024",
+            "greenaway_mcgrevy_2025_wp017"
+          ],
           "rationale": "Low: SB 9 produced few units early on. Central: modest, in line with the small average U.S. response (+0.8% of stock in 3-9 years). High: Lower Hutt's broad upzoning raised net regional starts 12-17%. Auckland's doubling of permits is treated as beyond the range because it was a larger, metro-wide reform."
         }
       },
       "data_gaps": [
-        "Uplift is applied to all permits, not only to single-family parcels, because parcel data aren't yet included.",
+        "Uplift applies to each county's permits weighted by its single-family share, not to individual single-family parcels; parcel data aren't included yet.",
         "Financial feasibility by market isn't modeled; weak markets will see less."
       ]
     },
@@ -93,7 +138,9 @@
       "benchmark": "Higher allowed residential density (height and/or FAR) near major transit stops; parking requirements may be reduced.",
       "base": "baseline_annual_permits",
       "uses_implementation": true,
-      "formula": "additional permits in year y = baseline annual permits x share of permits near major transit x uplift near transit x implementation share x ramp[y]",
+      "exposure": "multifamily",
+      "building_type": "2plus",
+      "formula": "for each county: average annual permits x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x share of permits near major transit x uplift near transit x implementation share x ramp[y]",
       "params": {
         "tod_share_near_transit": {
           "label": "Share of the state's permits that fall within the transit-proximity threshold",
@@ -112,7 +159,12 @@
           "central": 0.1,
           "high_case": 0.3,
           "basis": "assumption anchored to studies",
-          "sources": ["freemark_2019", "kestelman_2025", "su_curran_groome_freemark_2026", "anagol_ferreira_rexer_2026"],
+          "sources": [
+            "freemark_2019",
+            "kestelman_2025",
+            "su_curran_groome_freemark_2026",
+            "anagol_ferreira_rexer_2026"
+          ],
           "rationale": "Low: Chicago found no detectable increase in permitting within five years, and LA's TOC raised proposals but not permits. High: big NYC upzonings added over 4,000 units in four years. Sao Paulo's corridor reform raised citywide stock 1.6% in the long run."
         }
       },
@@ -127,7 +179,9 @@
       "benchmark": "Minimum parking requirements reduced or eliminated for new residential development; developers still provide parking where the market demands it.",
       "base": "baseline_annual_permits",
       "uses_implementation": true,
-      "formula": "additional permits in year y = baseline annual permits x parking uplift x implementation share x ramp[y]",
+      "exposure": "multifamily",
+      "building_type": "state_mix",
+      "formula": "for each county: average annual permits x county weight (share of homes in 5+ unit buildings vs. U.S.); summed over counties, x parking uplift x implementation share x ramp[y]",
       "params": {
         "parking_uplift": {
           "label": "Increase in total permits once fully in effect",
@@ -136,7 +190,12 @@
           "central": 0.02,
           "high_case": 0.05,
           "basis": "assumption anchored to studies",
-          "sources": ["gabbe_pierce_clowers_2020", "andersson_2016", "tanrisever_2025", "sohoni_lee_2026"],
+          "sources": [
+            "gabbe_pierce_clowers_2020",
+            "andersson_2016",
+            "tanrisever_2025",
+            "sohoni_lee_2026"
+          ],
           "rationale": "Developer-provided parking: about 70% of Seattle projects without a minimum still built some, and responses depend on local demand, so minimums often don't bind (low = 0). A simulation found parking norms cut housing stock about 1.2% in the long run, and a 2025 event study reports supply gains after reforms but no coefficient yet."
         }
       },
@@ -151,7 +210,9 @@
       "benchmark": "Total development fees (planning, environmental review, building and impact fees) cut 50% across all major categories, from an assumed $50,000 per unit to $25,000.",
       "base": "baseline_annual_permits",
       "uses_implementation": false,
-      "formula": "additional permits in year y = baseline annual permits x fee-cut uplift x ramp[y]",
+      "exposure": "none",
+      "building_type": "state_mix",
+      "formula": "for each county: average annual permits; summed over counties, x fee-cut uplift x ramp[y]",
       "params": {
         "fee_uplift": {
           "label": "Increase in total permits from a $25,000 per-unit fee cut once fully in effect",
@@ -160,7 +221,12 @@
           "central": 0.02,
           "high_case": 0.05,
           "basis": "assumption anchored to studies",
-          "sources": ["cmhc_2026_dev_charges", "burge_ihlanfeldt_2006_sf", "ihlanfeldt_shaughnessy_2004", "skidmore_peddle_1998"],
+          "sources": [
+            "cmhc_2026_dev_charges",
+            "burge_ihlanfeldt_2006_sf",
+            "ihlanfeldt_shaughnessy_2004",
+            "skidmore_peddle_1998"
+          ],
           "rationale": "High: halving development charges made about 5% more projects financially viable in CMHC's model; viability is an upper bound on starts. Low: part of a fee cut is absorbed by land prices, and some fees fund infrastructure that enables building. The $50,000 starting fee is the challenge's assumption, not observed data."
         }
       },

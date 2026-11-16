@@ -78,6 +78,9 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                         "central": e.central.round(),
                         "high": e.high.round(),
                         "central_by_year": e.central_by_year.iter().map(|v| v.round()).collect::<Vec<_>>(),
+                        "completed": {"low": e.completed_low.round(), "central": e.completed_central.round(), "high": e.completed_high.round()},
+                        "exposure_factor": e.exposure_factor,
+                        "top_counties": e.top_counties.iter().map(|(n, v)| json!({"county": n, "units": v.round()})).collect::<Vec<_>>(),
                         "top_sensitivity": e.sensitivity.first().map(|x| x.label.clone()),
                         "explanation": a.explain(&e, s),
                     })
@@ -89,6 +92,8 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                     "state": {"abbr": s.abbr, "name": s.name, "population": s.population},
                     "permits": s.permits.iter().map(|(y, n)| json!({"year": y, "units": n})).collect::<Vec<_>>(),
                     "baseline": {"low": b.low, "central": b.central, "high": b.high},
+                    "baseline_completed": s.baseline_completions().central,
+                    "counties": s.counties().len(),
                     "outcome": a.meta.outcome,
                     "status": a.meta.status,
                     "scenarios": scenarios,
@@ -224,6 +229,12 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("MODEL ESTIMATE"));
+        assert_eq!(v["counties"], 67);
+        for sc in v["scenarios"].as_array().unwrap() {
+            let done = sc["completed"]["central"].as_f64().unwrap();
+            assert!(done > 0.0 && done <= sc["central"].as_f64().unwrap());
+        }
+        assert!(v["scenarios"][0]["top_counties"].as_array().unwrap().len() == 5);
     }
 
     #[test]

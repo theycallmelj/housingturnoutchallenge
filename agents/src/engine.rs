@@ -3,12 +3,20 @@
 //!
 //! Mechanics live here; every number lives in `assumptions/scenarios.json`,
 //! with its low/central/high values, sources and rationale. Each scenario is
-//! a product of factors applied to state data (Census permits and
-//! population):
+//! computed **per county and summed to the state**:
 //!
 //! ```text
-//! ADU:          rate per 100k x population/100k x (1 - legalization) x implementation x ramp[y]
-//! uplift ones:  baseline annual permits x factors... x implementation x ramp[y]
+//! county base   = population/100k (ADU) or average annual permits (others)
+//! county weight = how much of the county's housing the reform touches vs. the
+//!                 U.S. (single-family detached share for ADU and missing
+//!                 middle; 5+-unit share for TOD and parking; 1 for fees),
+//!                 capped to a bounded range
+//! state annual  = sum over counties (base x weight) x the scenario's factors
+//!                 x implementation share
+//! year y        = state annual x ramp[y]
+//! completed     = each year's added permits x the region's completion ratio
+//!                 x the share finished before year 5 ends (permit-to-
+//!                 completion months for that building type)
 //! ```
 //!
 //! The low estimate uses every low_case value together, the high estimate
@@ -42,6 +50,15 @@ pub struct Meta {
 pub struct Shared {
     pub implementation_share: Param,
     pub ramp: RampParam,
+    pub exposure: ExposureRule,
+}
+
+/// Bounds on a county's weight, so one unusual county can't dominate.
+#[derive(Debug, Deserialize)]
+pub struct ExposureRule {
+    pub min: f64,
+    pub max: f64,
+    pub rationale: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -79,9 +96,25 @@ pub struct ScenarioSpec {
     /// `population_per_100k` or `baseline_annual_permits`.
     pub base: String,
     pub uses_implementation: bool,
+    /// Which county housing share weights the scenario: `sf_detached`,
+    /// `multifamily` or `none`.
+    #[serde(default = "none")]
+    pub exposure: String,
+    /// Building type for permit-to-completion timing: `1unit`, `2plus` or
+    /// `state_mix` (the state's latest permit mix).
+    #[serde(default = "state_mix")]
+    pub building_type: String,
     pub formula: String,
     pub params: BTreeMap<String, Param>,
     pub data_gaps: Vec<String>,
+}
+
+fn none() -> String {
+    "none".into()
+}
+
+fn state_mix() -> String {
+    "state_mix".into()
 }
 
 /// Which value of each assumption to use.
@@ -165,6 +198,26 @@ pub struct Estimate {
     /// Central additional units by year.
     pub central_by_year: Vec<f64>,
     pub sensitivity: Vec<Sensitivity>,
+    /// Added homes completed within the horizon (low/central/high).
+    pub completed_low: f64,
+    pub completed_central: f64,
+    pub completed_high: f64,
+    /// Baseline homes completed within the horizon (central).
+    pub baseline_completed_central: u64,
+    /// The state's base-weighted average county weight (1 = like the U.S.).
+    pub exposure_factor: f64,
+    /// Counties contributing most to the central estimate.
+    pub top_counties: Vec<(String, f64)>,
+}
+
+/// The state's county-weighted base for one scenario.
+struct Base {
+    /// Sum over counties of base x weight.
+    effective: f64,
+    /// effective / unweighted base: the state's net weight.
+    factor: f64,
+    /// (county name, share of `effective`), largest first.
+    by_county: Vec<(String, f64)>,
 }
 
 impl Assumptions {
@@ -187,21 +240,83 @@ impl Assumptions {
         out
     }
 
+    /// A county's weight for a scenario: its housing share relative to the
+    /// U.S., bounded. Counties without ACS data use their state's share.
+    pub fn county_weight(
+        &self,
+        spec: &ScenarioSpec,
+        c: &crate::state::County,
+        s: &StateBaseline,
+    ) -> f64 {
+        let nat = crate::state::national_stock();
+        let (share, national) = match spec.exposure.as_str() {
+            "sf_detached" => (
+                c.stock
+                    .and_then(|k| k.sf_detached_share())
+                    .or(s.stock.sf_detached_share()),
+                nat.sf_detached_share(),
+            ),
+            "multifamily" => (
+                c.stock
+                    .and_then(|k| k.multifamily_share())
+                    .or(s.stock.multifamily_share()),
+                nat.multifamily_share(),
+            ),
+            _ => return 1.0,
+        };
+        match (share, national) {
+            (Some(v), Some(n)) if n > 0.0 => {
+                (v / n).clamp(self.shared.exposure.min, self.shared.exposure.max)
+            }
+            _ => 1.0,
+        }
+    }
+
+    /// Sum the scenario's base over the state's counties, weighted.
+    fn base(&self, spec: &ScenarioSpec, s: &StateBaseline) -> Base {
+        let mut raw = 0.0;
+        let mut effective = 0.0;
+        let mut by_county = Vec::new();
+        for c in s.counties() {
+            // Per-capita rates only count residents of permit-issuing counties:
+            // the outcome is permits, and homes built elsewhere aren't counted.
+            let b = match spec.base.as_str() {
+                "population_per_100k" if c.permit_issuing => {
+                    c.population.unwrap_or(0) as f64 / 100_000.0
+                }
+                "population_per_100k" => 0.0,
+                _ => c.average_annual(),
+            };
+            if b <= 0.0 {
+                continue;
+            }
+            let w = self.county_weight(spec, c, s);
+            raw += b;
+            effective += b * w;
+            by_county.push((c.name.clone(), b * w));
+        }
+        by_county.sort_by(|a, b| b.1.total_cmp(&a.1));
+        for x in &mut by_county {
+            x.1 /= effective.max(f64::MIN_POSITIVE);
+        }
+        Base {
+            effective,
+            factor: if raw > 0.0 { effective / raw } else { 1.0 },
+            by_county,
+        }
+    }
+
     /// Five-year additional units with each assumption at the given case
     /// (`cases` names the case per assumption; missing names use `default`),
     /// and the per-year path.
     fn compute(
         &self,
         spec: &ScenarioSpec,
-        s: &StateBaseline,
+        base: f64,
         default: Case,
         cases: &BTreeMap<&str, Case>,
         ramp_case: Case,
     ) -> (f64, Vec<f64>) {
-        let base = match spec.base.as_str() {
-            "population_per_100k" => s.per_100k(),
-            _ => s.average_annual(),
-        };
         let annual: f64 = self
             .params_for(spec)
             .iter()
@@ -229,10 +344,19 @@ impl Assumptions {
                     .join(", ")
             )
         })?;
+        let base = self.base(spec, s);
+        let eb = base.effective;
         let none = BTreeMap::new();
-        let (low, _) = self.compute(spec, s, Case::Low, &none, Case::Low);
-        let (central, central_by_year) = self.compute(spec, s, Case::Central, &none, Case::Central);
-        let (high, _) = self.compute(spec, s, Case::High, &none, Case::High);
+        let (low, low_path) = self.compute(spec, eb, Case::Low, &none, Case::Low);
+        let (central, central_by_year) =
+            self.compute(spec, eb, Case::Central, &none, Case::Central);
+        let (high, high_path) = self.compute(spec, eb, Case::High, &none, Case::High);
+        let one_unit = match spec.building_type.as_str() {
+            "1unit" => 1.0,
+            "2plus" => 0.0,
+            _ => s.one_unit_share(),
+        };
+        let done = |path: &[f64]| s.completions_from_path(path, one_unit);
 
         let mut sensitivity: Vec<Sensitivity> = self
             .params_for(spec)
@@ -241,7 +365,7 @@ impl Assumptions {
                 let at = |c: Case| {
                     self.compute(
                         spec,
-                        s,
+                        eb,
                         Case::Central,
                         &BTreeMap::from([(*name, c)]),
                         Case::Central,
@@ -260,8 +384,8 @@ impl Assumptions {
         sensitivity.push(Sensitivity {
             assumption: "ramp".into(),
             label: self.shared.ramp.label.clone(),
-            low: self.compute(spec, s, Case::Central, &none, Case::Low).0,
-            high: self.compute(spec, s, Case::Central, &none, Case::High).0,
+            low: self.compute(spec, eb, Case::Central, &none, Case::Low).0,
+            high: self.compute(spec, eb, Case::Central, &none, Case::High).0,
         });
         sensitivity.sort_by(|a, b| (b.high - b.low).total_cmp(&(a.high - a.low)));
 
@@ -276,8 +400,19 @@ impl Assumptions {
             low,
             central,
             high,
+            completed_low: done(&low_path),
+            completed_central: done(&central_by_year),
+            completed_high: done(&high_path),
+            baseline_completed_central: s.baseline_completions().central,
             central_by_year,
             sensitivity,
+            exposure_factor: base.factor,
+            top_counties: base
+                .by_county
+                .into_iter()
+                .take(5)
+                .map(|(n, sh)| (n, sh * central))
+                .collect(),
         })
     }
 
@@ -293,7 +428,11 @@ impl Assumptions {
              Reform: {bench}\n\
              Additional units authorized by permit over {h} years: central {c} (range {lo} to {hi}); \
              {cp:.1}% of the five-year baseline of {base} (range {plo:.1}% to {phi:.1}%).\n\
-             Central by year: {years}\n\
+             Completed within {h} years: central {cc} (range {clo} to {chi}), vs. about {bc} baseline homes completed; \
+             homes permitted late in the window finish after it.\n\
+             Central by year (permits): {years}\n\
+             {weight}\n\
+             Largest county contributions (central): {top}\n\
              Formula: {formula}\n",
             label = e.label,
             name = s.name,
@@ -308,6 +447,16 @@ impl Assumptions {
             plo = pct(e.low),
             phi = pct(e.high),
             years = e.central_by_year.iter().enumerate().map(|(i, v)| format!("y{} {}", i + 1, round10(*v))).collect::<Vec<_>>().join(", "),
+            cc = round10(e.completed_central),
+            clo = round10(e.completed_low),
+            chi = round10(e.completed_high),
+            bc = thousands(e.baseline_completed_central),
+            weight = match spec.exposure.as_str() {
+                "sf_detached" => format!("County weighting: single-family detached share of homes vs. the U.S.; {}'s counties net out to {:.2}x the U.S.", s.name, e.exposure_factor),
+                "multifamily" => format!("County weighting: share of homes in 5+ unit buildings vs. the U.S.; {}'s counties net out to {:.2}x the U.S.", s.name, e.exposure_factor),
+                _ => "County weighting: none (the benchmark applies the same fee cut everywhere).".to_string(),
+            },
+            top = e.top_counties.iter().map(|(n, v)| format!("{n} {}", round10(*v))).collect::<Vec<_>>().join(", "),
             formula = spec.formula,
         );
         let mut sources: Vec<&str> = Vec::new();
@@ -375,7 +524,7 @@ impl Assumptions {
         let b = s.baseline();
         let mut out = format!(
             "SCENARIO COMPARISON {name} ({abbr})\nFive-year baseline (current rules): {c} units authorized by permit (range {lo} to {hi}).\n\n\
-             | Scenario | Additional units, 5 yrs (central) | Range | % of baseline (central) | Most sensitive to |\n| --- | --- | --- | --- | --- |\n",
+             | Scenario | Additional units permitted, 5 yrs (central) | Range | Completed within 5 yrs (central) | % of baseline (central) | Most sensitive to |\n| --- | --- | --- | --- | --- | --- |\n",
             name = s.name,
             abbr = s.abbr,
             c = thousands(b.central),
@@ -385,11 +534,12 @@ impl Assumptions {
         for spec in &self.scenarios {
             if let Ok(e) = self.estimate(&spec.id, s) {
                 out.push_str(&format!(
-                    "| {} | {} | {} to {} | {:.1}% | {} |\n",
+                    "| {} | {} | {} to {} | {} | {:.1}% | {} |\n",
                     e.label,
                     round10(e.central),
                     round10(e.low),
                     round10(e.high),
+                    round10(e.completed_central),
                     100.0 * e.central / b.central as f64,
                     e.sensitivity.first().map_or("", |x| x.label.as_str())
                 ));
@@ -491,9 +641,17 @@ mod tests {
     #[test]
     fn adu_central_matches_the_published_formula() {
         let s = state::find("PA").unwrap();
+        let spec = a().scenarios.iter().find(|x| x.id == "adu").unwrap();
         let e = a().estimate("adu", s).unwrap();
-        // 40 per 100k x pop/100k x (1 - 0.15) x 0.75 x (0.4+0.7+1+1+1)
-        let expected = 40.0 * s.population as f64 / 100_000.0 * 0.85 * 0.75 * 4.1;
+        // Sum over permit-issuing counties of pop/100k x weight, then
+        // 40 per 100k x (1 - 0.15) x 0.75 x (0.4+0.7+1+1+1)
+        let base: f64 = s
+            .counties()
+            .into_iter()
+            .filter(|c| c.permit_issuing)
+            .map(|c| c.population.unwrap_or(0) as f64 / 100_000.0 * a().county_weight(spec, c, s))
+            .sum();
+        let expected = 40.0 * base * 0.85 * 0.75 * 4.1;
         assert!(
             (e.central - expected).abs() < 1e-6,
             "{} vs {expected}",
@@ -505,11 +663,18 @@ mod tests {
     fn uplift_central_matches_the_published_formula() {
         let s = state::find("WI").unwrap();
         let e = a().estimate("fees", s).unwrap();
-        // baseline annual x 0.02 x 4.1 (no implementation share for fees)
+        // Fees are unweighted: baseline annual x 0.02 x 4.1 (no implementation share)
         let expected = s.average_annual() * 0.02 * 4.1;
         assert!((e.central - expected).abs() < 1e-6);
+        assert!((e.exposure_factor - 1.0).abs() < 1e-12);
+        let spec = a().scenarios.iter().find(|x| x.id == "tod").unwrap();
+        let base: f64 = s
+            .counties()
+            .into_iter()
+            .map(|c| c.average_annual() * a().county_weight(spec, c, s))
+            .sum();
         let tod = a().estimate("tod", s).unwrap();
-        assert!((tod.central - s.average_annual() * 0.12 * 0.10 * 0.75 * 4.1).abs() < 1e-6);
+        assert!((tod.central - base * 0.12 * 0.10 * 0.75 * 4.1).abs() < 1e-6);
     }
 
     #[test]
@@ -552,9 +717,68 @@ mod tests {
             .estimate("missing_middle", state::find("WY").unwrap())
             .unwrap();
         assert!(ca.central > wy.central);
-        // Uplift scenarios are a fixed share of each state's own baseline.
-        let share = |e: &Estimate| e.central / e.baseline_central as f64;
+        // Uplift scenarios are a share of each state's baseline scaled by its
+        // county weighting, so the share differs only by the exposure factor.
+        let share = |e: &Estimate| e.central / e.baseline_central as f64 / e.exposure_factor;
         assert!((share(&ca) - share(&wy)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn county_weights_are_bounded_and_vary_by_housing_mix() {
+        let ex = &a().shared.exposure;
+        let mm = a()
+            .scenarios
+            .iter()
+            .find(|x| x.id == "missing_middle")
+            .unwrap();
+        let tod = a().scenarios.iter().find(|x| x.id == "tod").unwrap();
+        for s in state::all() {
+            for c in s.counties() {
+                for spec in [mm, tod] {
+                    let w = a().county_weight(spec, c, s);
+                    assert!((ex.min..=ex.max).contains(&w), "{} {} {w}", s.abbr, c.name);
+                }
+            }
+        }
+        // New York (dense, multifamily) vs. Idaho (single-family): TOD
+        // weights tilt toward NY, missing middle toward ID.
+        let ny = a().estimate("tod", state::find("NY").unwrap()).unwrap();
+        let id = a().estimate("tod", state::find("ID").unwrap()).unwrap();
+        assert!(ny.exposure_factor > 1.0 && id.exposure_factor < 1.0);
+        let ny = a()
+            .estimate("missing_middle", state::find("NY").unwrap())
+            .unwrap();
+        let id = a()
+            .estimate("missing_middle", state::find("ID").unwrap())
+            .unwrap();
+        assert!(ny.exposure_factor < id.exposure_factor);
+    }
+
+    #[test]
+    fn completions_lag_and_never_exceed_permits() {
+        for s in state::all() {
+            for spec in &a().scenarios {
+                let e = a().estimate(&spec.id, s).unwrap();
+                assert!(
+                    e.completed_central > 0.0 && e.completed_central < e.central,
+                    "{} {}",
+                    s.abbr,
+                    spec.id
+                );
+                assert!(
+                    e.completed_low <= e.completed_central
+                        && e.completed_central <= e.completed_high
+                );
+                assert!(e.completed_high <= e.high + 1e-9);
+                let sum: f64 = e.top_counties.iter().map(|x| x.1).sum();
+                assert!(sum <= e.central + 1e-6);
+            }
+        }
+        // ADUs (1-unit, fast) finish a larger share than missing middle (2+).
+        let s = state::find("PA").unwrap();
+        let adu = a().estimate("adu", s).unwrap();
+        let mm = a().estimate("missing_middle", s).unwrap();
+        assert!(adu.completed_central / adu.central > mm.completed_central / mm.central);
     }
 
     #[test]

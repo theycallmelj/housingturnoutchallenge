@@ -253,7 +253,9 @@ impl ModelProvider for OfflineOrchestratorModel {
                 .iter()
                 .flat_map(|a| a.lines())
                 .filter(|l| {
-                    l.starts_with("MODEL ESTIMATE") || l.starts_with("Additional units authorized")
+                    l.starts_with("MODEL ESTIMATE")
+                        || l.starts_with("Additional units authorized")
+                        || l.starts_with("Completed within")
                 })
                 .collect();
             out.push_str("\n## Statewide five-year effect vs. baseline\n");

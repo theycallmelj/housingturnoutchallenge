@@ -83,9 +83,9 @@
 
   <section class="card">
     <h2>Scenario comparison</h2>
-    <p class="sub">Additional housing units authorized by permit over five years vs. the baseline. Bars show the low-high range; the blue mark is the central estimate. Click a scenario for its formula, sensitivity, assumptions and sources.</p>
+    <p class="sub">Additional housing units authorized by permit over five years vs. the baseline, computed county by county and summed to the state, plus how many of them are finished within the five years. Bars show the low-high range; the blue mark is the central estimate. Click a scenario for its formula, sensitivity, assumptions and sources.</p>
     <table>
-      <thead><tr><th>Scenario</th><th>Central</th><th>Range</th><th></th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
+      <thead><tr><th>Scenario</th><th>Permitted (central)</th><th>Range</th><th></th><th>Completed in 5 yrs</th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
       <tbody id="scenarios"></tbody>
     </table>
     <p class="note">Scenarios are estimated separately and shouldn't be added together: they overlap and interact. Assumptions are first-pass and editable in <code>agents/assumptions/scenarios.json</code>.</p>
@@ -160,10 +160,11 @@ async function loadCompare() {
       <td class="num">${fmt10(s.central)}</td>
       <td class="num muted">${fmt10(s.low)} – ${fmt10(s.high)}</td>
       <td><div class="rangebar"><div class="span" style="left:${100 * s.low / top}%;width:${Math.max(0.5, 100 * (s.high - s.low) / top)}%"></div><div class="mid" style="left:${100 * s.central / top}%"></div></div></td>
+      <td class="num">${fmt10(s.completed.central)}</td>
       <td class="num">${(100 * s.central / d.baseline.central).toFixed(1)}%</td>
       <td class="muted" style="font-size:13px">${esc(s.top_sensitivity || "")}</td>
     </tr>
-    <tr class="explain" id="explain-${k}"><td colspan="6"><pre>${esc(s.explanation)}</pre></td></tr>`).join("");
+    <tr class="explain" id="explain-${k}"><td colspan="7"><pre>${esc(s.explanation)}</pre></td></tr>`).join("");
   document.querySelectorAll("tr.scenario").forEach((tr) => tr.addEventListener("click", () => $("explain-" + tr.dataset.k).classList.toggle("open")));
 }
 
