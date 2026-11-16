@@ -125,7 +125,7 @@
         <li><b>Permits turn into homes over time.</b> Census data on how long construction takes show that most single-family homes finish within two years of their permit, while apartment buildings often take three years or more, and about a quarter of apartment permits never start.</li>
         <li><b>Checked against history.</b> <span id="backtest-note"></span></li>
       </ol>
-      <p class="hint" style="margin-top:8px">Sources: Census Building Permits Survey, Population Estimates, American Community Survey and Survey of Construction; FHFA House Price Index; U.S. Treasury yields. All public domain. Method and limits: MODEL.md.</p>
+      <p class="hint" style="margin-top:8px">Data (all public domain): <a class="cite" href="https://www.census.gov/construction/bps/" target="_blank" rel="noopener">Census Building Permits Survey</a>, <a class="cite" href="https://www.census.gov/programs-surveys/popest.html" target="_blank" rel="noopener">Census Population Estimates</a>, <a class="cite" href="https://www.census.gov/programs-surveys/acs" target="_blank" rel="noopener">American Community Survey</a>, <a class="cite" href="https://www.census.gov/construction/nrc/" target="_blank" rel="noopener">Census Survey of Construction</a>, <a class="cite" href="https://www.fhfa.gov/data/hpi" target="_blank" rel="noopener">FHFA House Price Index</a>, <a class="cite" href="https://home.treasury.gov/resource-center/data-chart-center/interest-rates" target="_blank" rel="noopener">U.S. Treasury yields</a>. Method and limits: <code>MODEL.md</code>.</p>
     </div>
   </section>
 
@@ -165,7 +165,9 @@ let studies = {};
 function cite(id) {
   const st = studies[id];
   if (!st) return `<code>${esc(id)}</code>`;
-  const names = st.authors.split(";").map((a) => a.trim().split(" ").pop());
+  // Organizations keep their full name ("The Pew Charitable Trusts"); people are cited by surname.
+  const org = /\b(Trusts?|Labs?|Center|Centre|Institute|Office|Department|Bureau|Council|Association|Agency|University|Partners|Foundation|Commission|Board)\b/;
+  const names = st.authors.split(";").map((a) => a.trim()).map((a) => (org.test(a) ? a.replace(/\s*\(.*\)$/, "") : a.split(" ").pop()));
   const who = names.length > 2 ? names[0] + " et al." : names.join(" & ");
   return `<a class="cite" href="${esc(st.url)}" target="_blank" rel="noopener" title="${esc(`${st.title} (${st.year}). ${st.finding}`)}">${esc(who)} ${st.year}</a>`;
 }
