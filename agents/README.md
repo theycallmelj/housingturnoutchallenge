@@ -41,7 +41,7 @@ The challenge wants **statewide** impacts against a **five-year current-rules ba
 cargo run --manifest-path agents/Cargo.toml --bin housing-ask -- --state PA "How many ADUs could a state law add?"
 ```
 
-- **State data:** `data/derived/state_baseline.csv` holds housing units permitted 2021-2025 (Census BPS) and 2025 population (Census PEP) for all 50 states and DC. It's rebuilt by `python3 scripts/fetch_state_baseline.py`; provenance is in `research/data/`.
+- **State data:** `data/derived/county_baseline.csv` holds housing units permitted 2021-2025 (Census BPS), 2025 population (Census PEP) and housing units by structure type (ACS B25024) for every county; `data/derived/state_baseline.csv` is the sum of each state's counties. `data/derived/completion_factors.csv` holds regional permit-to-completion ratios and months (Census Survey of Construction). Rebuild with `python3 scripts/fetch_state_baseline.py` and `python3 scripts/fetch_construction_timing.py`; provenance is in `research/data/`.
 - **Baseline rule:** average annual permits × 5, with the slowest and fastest year × 5 as the range. Outcome = units authorized by permit.
 - **`state.profile`** gives every expert the state's baseline. **`state.scale_rate`** converts a study's per-100,000-residents rate into statewide units with the arithmetic shown, so models never do the math.
 - **Answer structure:** (1) statewide five-year effect vs. baseline, as a range; (2) drivers; (3) sensitivities; (4) what this cannot tell you.
