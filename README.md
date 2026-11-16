@@ -7,6 +7,22 @@
 
 Team repository for the [Housing Data and Technology Innovation Challenge](https://housingchallenge.turnout.rocks/handbook.html): open-source tools estimating how state housing policy reforms change housing production against a five-year baseline.
 
+## Demo
+
+[![Demo of the State Housing Policy Lab web UI](docs/demo/housing-web-demo.gif)](docs/demo/housing-web-demo.mp4)
+
+[Watch the full recording (MP4, 2 min 25 s)](docs/demo/housing-web-demo.mp4). It shows the local web UI (`housing-web`) running with live Apache-2.0 models on OpenRouter (gpt-oss-120b leads, gpt-oss-20b experts):
+
+1. Pennsylvania's five-year baseline, with permits, construction starts and completions by year, and a plain-language explanation of how it is built and back-tested.
+2. Data-source links opening the publishers' pages: Census Building Permits Survey, Census Survey of Construction, FHFA House Price Index.
+3. "What if the economy is worse?": higher interest rates and lower migration shrink the baseline.
+4. A reform's detail view: the result in plain words, what moves it most, and each assumption with its basis and linked sources. A citation opens the study itself.
+5. A question to the expert panel. The answer names the experts consulted, links every cited study, and passes the automatic citation check.
+
+The wait for the models is sped up 8×; the on-screen timer shows real time. To run it yourself: `cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-web` (offline models without `--features llm`), then open http://127.0.0.1:8787.
+
+## Contents
+
 - [`AGENTS.md`](AGENTS.md): contribution rules (SBOM, data provenance, AI disclosure, licensing). Read it first.
 - [`prototypes/`](prototypes/): UI and engine prototypes
 - [`research/`](research/README.md): literature index and data-source provenance
