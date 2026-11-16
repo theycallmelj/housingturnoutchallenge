@@ -11,6 +11,7 @@
 //! | `POST /api/ask` `{question, state}` | the panel's answer, experts consulted, models, audit trail, citation check |
 
 use crate::engine::Assumptions;
+use crate::ontology::Ontology;
 use crate::panel::Panel;
 use crate::state;
 use serde_json::{json, Value};
@@ -96,6 +97,7 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                         "top_counties": e.top_counties.iter().map(|(n, v)| json!({"county": n, "units": v.round()})).collect::<Vec<_>>(),
                         "top_sensitivity": e.sensitivity.first().map(|x| x.label.clone()),
                         "explanation": a.explain(&e, s),
+                        "details": a.details(&e),
                     })
                 })
                 .collect();
@@ -118,6 +120,7 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                     "counties": s.counties().len(),
                     "outcome": a.meta.outcome,
                     "status": a.meta.status,
+                    "studies": studies_in(&scenarios.iter().map(|v| v["details"]["assumptions"].to_string()).collect::<String>()),
                     "scenarios": scenarios,
                 }),
             ))
@@ -125,6 +128,21 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
         ("POST", "/api/ask") => None,
         _ => Some(json_reply(404, json!({"error": "not found"}))),
     }
+}
+
+/// Title, authors, year and link for every ontology study id that appears in
+/// `text`, so the page can show a readable citation instead of the bare id.
+fn studies_in(text: &str) -> Value {
+    let mut out = serde_json::Map::new();
+    for st in &Ontology::bundled().studies {
+        if text.contains(st.id.as_str()) {
+            out.insert(
+                st.id.clone(),
+                json!({"title": st.title, "authors": st.authors, "year": st.year, "url": st.url, "evidence_type": st.evidence_type, "finding": st.finding}),
+            );
+        }
+    }
+    Value::Object(out)
 }
 
 async fn ask(panel: &Panel, body: &str) -> Reply {
@@ -149,6 +167,11 @@ async fn ask(panel: &Panel, body: &str) -> Reply {
                 "models": a.models,
                 "audit": a.audit,
                 "citation_issues": a.citation_issues,
+                "experts": a.consulted.iter().map(|id| json!({
+                    "id": id,
+                    "label": Ontology::bundled().domain(id).map_or(id.as_str(), |d| d.label.as_str()),
+                })).collect::<Vec<_>>(),
+                "studies": studies_in(&a.text),
             }),
         ),
         Err(e) => json_reply(500, json!({"error": e.to_string()})),
@@ -257,6 +280,20 @@ mod tests {
             assert!(done > 0.0 && done <= sc["central"].as_f64().unwrap());
         }
         assert!(v["scenarios"][0]["top_counties"].as_array().unwrap().len() == 5);
+        // Structured details for the page, and every cited study resolves.
+        for sc in v["scenarios"].as_array().unwrap() {
+            let d = &sc["details"];
+            assert!(!d["reform"].as_str().unwrap().is_empty());
+            assert!(!d["sensitivity"].as_array().unwrap().is_empty());
+            for a in d["assumptions"].as_array().unwrap() {
+                for id in a["sources"].as_array().unwrap() {
+                    assert!(
+                        v["studies"][id.as_str().unwrap()]["title"].is_string(),
+                        "{id}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -184,7 +184,8 @@ fn orchestrator_prompt(tools: &[ToolSpec], plan: &ModelPlan) -> String {
          4. What this cannot tell you.\n\
          Cite the study id in backticks next to every figure or finding you use, e.g. `pew_2026_adu`; don't \
          replace ids with author names. When you report a model estimate, copy its \"Evidence behind this \
-         estimate\" ids too, and name the source ids for each assumption you discuss. Consult every expert listed as suggested in the context unless it is \
+         estimate\" ids too, and name the source ids for each assumption you discuss. Never write source markers \
+         such as 【consult.adu】 or [tool]; the page already lists which experts were consulted. Consult every expert listed as suggested in the context unless it is \
          clearly irrelevant.";
     with_tool_instructions(base.to_string(), tools, plan)
 }
@@ -355,6 +356,49 @@ pub fn numbers(line: &str) -> Vec<String> {
     if !cur.is_empty() {
         out.push(cur);
     }
+    out
+}
+
+/// Strip the source markers some models (gpt-oss) add, e.g. `【consult.adu】`,
+/// `【consult__baseline_data】` or `【4†source】`. A marker that names an expert
+/// becomes "(ADU expert)"-style attribution; anything else is dropped.
+pub fn clean_markers(ontology: &Ontology, text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find(['【', '[']) {
+        let open = rest[i..].chars().next().unwrap();
+        let after = &rest[i + open.len_utf8()..];
+        // A `[` only opens a marker when it names a tool; `【` always does.
+        let is_marker = open == '【' || after.trim_start().starts_with("consult");
+        let close = after
+            .char_indices()
+            .take_while(|(_, c)| *c != '\n')
+            .find(|(_, c)| *c == '】' || *c == ']')
+            .filter(|(k, _)| *k <= 120);
+        let (true, Some((k, c))) = (is_marker, close) else {
+            out.push_str(&rest[..i + open.len_utf8()]);
+            rest = after;
+            continue;
+        };
+        let inner = after[..k].trim();
+        let id = inner
+            .trim_start_matches("consult")
+            .trim_start_matches(['.', '_', ':', ' ']);
+        let id = id.split(['†', ' ', ',', ';']).next().unwrap_or("");
+        let before = rest[..i].trim_end_matches([' ', '\t']);
+        out.push_str(before);
+        match ontology.domain(id).filter(|_| inner.starts_with("consult")) {
+            Some(d) => out.push_str(&format!(" ({} expert)", d.label)),
+            None if rest[..i].len() != before.len()
+                && !after[k + c.len_utf8()..].starts_with([' ', '\n', '.', ',', ';', ':', ')']) =>
+            {
+                out.push(' ')
+            }
+            None => {}
+        }
+        rest = &after[k + c.len_utf8()..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -620,6 +664,7 @@ impl Panel {
                 citation_issues = revised_issues;
             }
         }
+        let answer = clean_markers(self.ontology, &answer);
         let text = if consulted.is_empty() && !self.plan.is_offline() {
             format!("{UNGROUNDED_LABEL}\n\n{answer}")
         } else {
@@ -651,6 +696,20 @@ mod tests {
 
     fn offline_plan() -> ModelPlan {
         ModelPlan::offline(&Panel::domain_ids(Ontology::bundled()))
+    }
+
+    #[test]
+    fn source_markers_become_attributions() {
+        let o = Ontology::bundled();
+        let t = "baseline **118,151**【consult__baseline_data】.\nADU adds 12,760 【consult.adu】 and [consult.tod】 x【4†source】.";
+        assert_eq!(
+            clean_markers(o, t),
+            "baseline **118,151** (Baseline, data and provenance expert).\nADU adds 12,760 (Accessory dwelling units expert) and (Transit-oriented density expert) x."
+        );
+        // Ordinary brackets and markdown are left alone.
+        let plain = "See [the model](MODEL.md) and `pew_2026_adu` [1].";
+        assert_eq!(clean_markers(o, plain), plain);
+        assert_eq!(clean_markers(o, "a 【note】 b"), "a b");
     }
 
     #[test]

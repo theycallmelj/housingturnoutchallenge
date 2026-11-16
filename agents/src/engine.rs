@@ -609,6 +609,73 @@ impl Assumptions {
         out
     }
 
+    /// The pieces of [`Self::explain`] as structured data, so a UI can lay
+    /// them out for a non-technical reader instead of showing the raw text.
+    pub fn details(&self, e: &Estimate) -> serde_json::Value {
+        use serde_json::json;
+        let spec = self
+            .scenario(&e.scenario)
+            .expect("estimate comes from a known scenario");
+        let row = |name: &str, p: &Param| {
+            json!({
+                "name": name,
+                "label": p.label,
+                "low": p.display(p.low_case),
+                "central": p.display(p.central),
+                "high": p.display(p.high_case),
+                "unit": if p.unit.starts_with("share") { "" } else { p.unit.as_str() },
+                "basis": p.basis,
+                "sources": p.sources,
+                "rationale": p.rationale,
+            })
+        };
+        let mut assumptions: Vec<serde_json::Value> = self
+            .params_for(spec)
+            .into_iter()
+            .map(|(n, p)| row(n, p))
+            .collect();
+        let r = &self.shared.ramp;
+        assumptions.push(json!({
+            "name": "ramp",
+            "label": r.label,
+            "low": pct_list(&r.low_case),
+            "central": pct_list(&r.central),
+            "high": pct_list(&r.high_case),
+            "unit": "",
+            "basis": r.basis,
+            "sources": r.sources,
+            "rationale": r.rationale,
+        }));
+        let mut sources: Vec<&str> = Vec::new();
+        for (_, p) in self.params_for(spec) {
+            for id in &p.sources {
+                if !sources.contains(&id.as_str()) {
+                    sources.push(id);
+                }
+            }
+        }
+        json!({
+            "reform": spec.benchmark,
+            "formula": spec.formula,
+            "building_type": match spec.building_type.as_str() {
+                "1unit" => "single-family and other 1-unit buildings",
+                "2to4" => "2-4 unit buildings",
+                "5plus" => "apartment buildings with 5+ units",
+                _ => "the state's usual mix of building types",
+            },
+            "weighting": match spec.exposure.as_str() {
+                "sf_detached" => "Counties with more detached single-family homes get more of the effect, because that is where the reform applies.",
+                "multifamily" => "Counties with more apartment buildings (5+ units) get more of the effect, because that is where this kind of development happens.",
+                _ => "Every county gets the same proportional effect, because the fee cut applies everywhere.",
+            },
+            "exposure_factor": e.exposure_factor,
+            "sensitivity": e.sensitivity.iter().map(|x| json!({"label": x.label, "low": x.low.round(), "high": x.high.round()})).collect::<Vec<_>>(),
+            "assumptions": assumptions,
+            "evidence": sources,
+            "gaps": spec.data_gaps,
+        })
+    }
+
     /// All five scenarios for one state, for side-by-side comparison.
     pub fn compare(&self, s: &StateBaseline) -> String {
         self.compare_with(s, &Conditions::default())

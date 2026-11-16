@@ -63,6 +63,25 @@
   table.years td, table.years th { padding: 6px 10px; font-size: 13.5px; }
   table.years td.num { text-align: right; }
   .link { background: none; color: var(--accent); padding: 0; font-weight: 600; }
+  .hint { font-size: 12.5px; color: var(--muted); margin: 4px 0 0; line-height: 1.4; }
+  .explainer { margin-top: 18px; padding: 14px 18px; background: #fafbfd; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+  .explainer h3, .detail h4 { margin: 0 0 6px; font-size: 14.5px; }
+  .explainer ol { margin: 6px 0 0; padding-left: 20px; }
+  .explainer li { margin: 4px 0; }
+  .detail { padding: 6px 4px 10px; font-size: 14px; }
+  .detail .lead { margin: 4px 0 10px; }
+  .detail h4 { margin-top: 18px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 8px 32px; }
+  .tornado { display: grid; gap: 10px; margin-top: 8px; }
+  .tornado .lbl { font-size: 13px; margin-bottom: 3px; }
+  .tornado .lbl b { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
+  .formula { font: 12px/1.5 ui-monospace, Menlo, monospace; color: var(--muted); background: #f0f2f6; border-radius: 6px; padding: 6px 8px; }
+  table.assume td, table.assume th { padding: 7px 8px; font-size: 13px; vertical-align: top; }
+  table.assume td.why { color: var(--muted); max-width: 420px; }
+  .badge { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .badge.study { background: var(--good-soft); color: var(--good); }
+  .badge.judgment { background: var(--warn-soft); color: var(--warn); }
+  a.cite { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); font-weight: 600; white-space: nowrap; }
   footer { max-width: 1120px; margin: 0 auto; padding: 0 32px 32px; color: var(--muted); font-size: 12.5px; }
 </style>
 </head>
@@ -89,18 +108,30 @@
       <thead><tr id="years-head"></tr></thead>
       <tbody id="years-body"></tbody>
     </table>
+    <p class="hint"><b>Permits</b>: homes approved by a building permit that year. <b>Construction starts</b>: homes where building begins. <b>Homes completed</b>: homes finished and ready to live in, including ones permitted before 2026 that are still being built.</p>
     <div class="controls">
-      <div><label for="rate">10-year Treasury vs. 2025 <output id="rate-out"></output></label><input id="rate" type="range" min="-3" max="5" step="0.25" value="0"></div>
-      <div><label for="migration">Net migration vs. recent <output id="migration-out"></output></label><input id="migration" type="range" min="0" max="2" step="0.1" value="1"></div>
-      <div><label for="price">House-price growth vs. recent <output id="price-out"></output></label><input id="price" type="range" min="-10" max="10" step="1" value="0"></div>
-      <div style="align-self:end"><button class="link" id="reset">Reset to recent conditions</button></div>
+      <div><label for="rate">Interest rates vs. 2025 <output id="rate-out"></output></label><input id="rate" type="range" min="-3" max="5" step="0.25" value="0">
+        <p class="hint">The 10-year Treasury yield, which moves with mortgage and construction-loan rates. Higher rates make building costlier.</p></div>
+      <div><label for="migration">People moving in vs. recent years <output id="migration-out"></output></label><input id="migration" type="range" min="0" max="2" step="0.1" value="1">
+        <p class="hint">Each county's net migration as a share of its 2023-2025 average. 0% means no net newcomers; 200% means twice as many.</p></div>
+      <div><label for="price">House-price growth vs. recent years <output id="price-out"></output></label><input id="price" type="range" min="-10" max="10" step="1" value="0">
+        <p class="hint">Change in yearly price growth, in percentage points. Faster price growth makes new building more profitable.</p></div>
+      <div style="align-self:end"><button class="link" id="reset">Reset to recent conditions</button><p class="hint" id="conditions-note"></p></div>
     </div>
-    <p class="note" id="method-note">Baseline: each county's permits forecast by a statistical model from its recent permits, population, net migration, house prices and the 10-year Treasury rate, then summed to the state. Starts and completions use Survey of Construction timing, including homes already in the pipeline. Sources: Census BPS, PEP, ACS and SOC; FHFA HPI; U.S. Treasury (public domain).</p>
+    <div class="explainer">
+      <h3>How this baseline is built</h3>
+      <ol>
+        <li><b>County by county.</b> A statistical model forecasts each county's building permits for 2026-2030 from its own recent permits, its population, how many people are moving in or out, house-price growth and interest rates. The county forecasts are added up to the state.</li>
+        <li><b>Permits turn into homes over time.</b> Census data on how long construction takes show that most single-family homes finish within two years of their permit, while apartment buildings often take three years or more, and about a quarter of apartment permits never start.</li>
+        <li><b>Checked against history.</b> <span id="backtest-note"></span></li>
+      </ol>
+      <p class="hint" style="margin-top:8px">Sources: Census Building Permits Survey, Population Estimates, American Community Survey and Survey of Construction; FHFA House Price Index; U.S. Treasury yields. All public domain. Method and limits: MODEL.md.</p>
+    </div>
   </section>
 
   <section class="card">
     <h2>Scenario comparison</h2>
-    <p class="sub">Additional housing units authorized by permit over five years vs. the baseline, computed county by county and summed to the state, plus how many of them are finished within the five years. Bars show the low-high range; the blue mark is the central estimate. Click a scenario for its formula, sensitivity, assumptions and sources.</p>
+    <p class="sub">How many <b>extra</b> homes each reform would get permitted over 2026-2030, on top of the baseline above, and how many of those would be finished by 2030. The bar shows the plausible range; the blue mark is the central estimate. <b>Click a scenario</b> to see what drives it, the assumptions behind it and the research they come from.</p>
     <table>
       <thead><tr><th>Scenario</th><th>Permitted (central)</th><th>Range</th><th></th><th>Completed by 2030</th><th>% of baseline</th><th>Most sensitive to</th></tr></thead>
       <tbody id="scenarios"></tbody>
@@ -128,9 +159,20 @@ const fmt = (n) => Math.round(n).toLocaleString("en-US");
 const fmt10 = (n) => (Math.round(n / 10) * 10).toLocaleString("en-US");
 const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// Study ids become readable citations ("Marantz et al. 2023") linked to the
+// source, with the title and finding on hover.
+let studies = {};
+function cite(id) {
+  const st = studies[id];
+  if (!st) return `<code>${esc(id)}</code>`;
+  const names = st.authors.split(";").map((a) => a.trim().split(" ").pop());
+  const who = names.length > 2 ? names[0] + " et al." : names.join(" & ");
+  return `<a class="cite" href="${esc(st.url)}" target="_blank" rel="noopener" title="${esc(`${st.title} (${st.year}). ${st.finding}`)}">${esc(who)} ${st.year}</a>`;
+}
+
 // Minimal markdown: headings, bold, code, lists, tables. Text is escaped first.
 function md(src) {
-  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>").replace(/\*([^*\s][^*]*?)\*/g, "<em>$1</em>").replace(/`([^`]+)`/g, (_, id) => (studies[id] ? cite(id) : `<code>${id}</code>`));
   const lines = src.split("\n"); const out = []; let i = 0;
   while (i < lines.length) {
     const l = lines[i];
@@ -178,13 +220,16 @@ async function loadCompare() {
   pending = q;
   const d = await (await fetch(q)).json();
   if (pending !== q) return; // a newer request is on its way
-  $("baseline").textContent = fmt(d.baseline.central) + " units";
-  $("baseline-range").textContent = `range ${fmt(d.baseline.low)} to ${fmt(d.baseline.high)} · ${fmt(d.baseline_completed)} homes completed · repeating 2021-2025 would give ${fmt(d.recent_pace)}`;
+  studies = Object.assign(studies, d.studies);
+  $("baseline").textContent = fmt(d.baseline.central) + " homes permitted";
+  $("baseline-range").innerHTML = `Plausible range ${fmt(d.baseline.low)} to ${fmt(d.baseline.high)}. About ${fmt(d.baseline_completed)} homes completed in the same years.<br>For comparison, repeating 2021-2025's permits would give ${fmt(d.recent_pace)}.`;
+  const bt = d.backtest;
+  $("backtest-note").textContent = `We re-ran the model as if it were 2015 through 2020 and compared its five-year state totals with what was actually permitted. The typical (median) miss was ${(100 * bt.median_abs_pct_error).toFixed(1)}%, against ${(100 * bt.recent_pace_median_abs_pct_error).toFixed(1)}% for simply repeating the previous five years, and ${Math.round(100 * bt.within_20pct)}% of forecasts were within 20%. Those misses set the plausible range. The model has tended to run low, so the range reaches further above the central figure than below it.`;
+  $("conditions-note").textContent = "Assumes " + d.conditions.description + ".";
   const by = d.baseline_by_year;
   $("years-head").innerHTML = "<th>Baseline</th>" + by.years.map((y) => `<th style="text-align:right">${y}</th>`).join("") + '<th style="text-align:right">Total</th>';
   const row = (name, v) => `<tr><td class="muted">${name}</td>${v.map((x) => `<td class="num">${fmt10(x)}</td>`).join("")}<td class="num">${fmt10(v.reduce((a, b) => a + b, 0))}</td></tr>`;
   $("years-body").innerHTML = row("Permits", by.permits) + row("Construction starts", by.starts) + row("Homes completed", by.completions);
-  $("method-note").title = d.conditions.description;
   const max = Math.max(...d.permits.map((p) => p.units));
   $("permits").innerHTML = d.permits.map((p) => `<div style="height:${Math.max(6, 60 * p.units / max)}px" title="${p.year}: ${fmt(p.units)}"><span>${String(p.year).slice(2)}</span></div>`).join("");
   const top = Math.max(...d.scenarios.map((s) => s.high));
@@ -199,11 +244,46 @@ async function loadCompare() {
       <td class="muted" style="font-size:13px">${esc(s.top_sensitivity || "")}</td>
     </tr>
     <tr class="explain" id="explain-${k}"><td colspan="7">
-      <table class="years" style="margin-bottom:10px"><thead><tr><th>Added</th>${by.years.map((y) => `<th style="text-align:right">${y}</th>`).join("")}</tr></thead><tbody>
-      ${["permits", "starts", "completions"].map((key) => `<tr><td class="muted">${{ permits: "Permits", starts: "Construction starts", completions: "Homes completed" }[key]}</td>${s.by_year[key].map((x) => `<td class="num">${fmt10(x)}</td>`).join("")}</tr>`).join("")}
-      </tbody></table>
-      <pre>${esc(s.explanation)}</pre></td></tr>`).join("");
+      ${detail(s, d)}</td></tr>`).join("");
   document.querySelectorAll("tr.scenario").forEach((tr) => tr.addEventListener("click", () => $("explain-" + tr.dataset.k).classList.toggle("open")));
+}
+
+// The expanded view of one scenario, written for a non-specialist.
+function detail(s, d) {
+  const x = s.details, by = d.baseline_by_year, name = d.state.name;
+  const pct = (100 * s.central / d.baseline.central).toFixed(1);
+  const yearsTable = `<table class="years"><thead><tr><th>Extra homes</th>${by.years.map((y) => `<th style="text-align:right">${y}</th>`).join("")}<th style="text-align:right">Total</th></tr></thead><tbody>
+    ${[["permits", "Permitted"], ["starts", "Construction started"], ["completions", "Completed"]].map(([k, l]) => `<tr><td class="muted">${l}</td>${s.by_year[k].map((v) => `<td class="num">${fmt10(v)}</td>`).join("")}<td class="num">${fmt10(s.by_year[k].reduce((a, b) => a + b, 0))}</td></tr>`).join("")}
+    </tbody></table>`;
+  const top = Math.max(s.high, ...x.sensitivity.map((v) => v.high));
+  const tornado = x.sensitivity.map((v) => `<div><div class="lbl">${esc(v.label)} <b>${fmt10(v.low)} – ${fmt10(v.high)}</b></div>
+    <div class="rangebar"><div class="span" style="left:${100 * v.low / top}%;width:${Math.max(0.5, 100 * (v.high - v.low) / top)}%"></div><div class="mid" style="left:${100 * s.central / top}%"></div></div></div>`).join("");
+  const judgment = (b) => !b.startsWith("study");
+  const rows = x.assumptions.map((a) => `<tr><td>${esc(a.label)}</td>
+    <td class="num muted">${esc(a.low)}</td><td class="num">${esc(a.central)}</td><td class="num muted">${esc(a.high)}</td>
+    <td><span class="badge ${judgment(a.basis) ? "judgment" : "study"}">${judgment(a.basis) ? "Team judgment" : "From a study"}</span></td>
+    <td class="why">${esc(a.rationale)}${a.sources.length ? `<br>Sources: ${a.sources.map(cite).join(", ")}` : ""}</td></tr>`).join("");
+  const counties = s.top_counties.map((c) => `<li>${esc(c.county)}: ${fmt10(c.units)}</li>`).join("");
+  return `<div class="detail">
+    <p class="lead"><b>The reform.</b> ${esc(x.reform)}</p>
+    <p class="lead"><b>What it would do in ${esc(name)}.</b> About <b>${fmt10(s.central)}</b> extra homes permitted over 2026-2030, plausibly anywhere from ${fmt10(s.low)} to ${fmt10(s.high)}. That is ${pct}% on top of the ${fmt(d.baseline.central)} the state would permit anyway. About <b>${fmt10(s.completed.central)}</b> of them would be finished by 2030. The rest are still being built, or never start, which is typical for ${esc(x.building_type)}. Effects build up over the first few years as local governments and builders respond.</p>
+    ${yearsTable}
+    <div class="grid2">
+      <div><h4>What moves the number most</h4>
+        <p class="hint">Each bar shows the result when one assumption moves from its low to its high value, with the others held at their central value. The blue mark is the central estimate.</p>
+        <div class="tornado">${tornado}</div></div>
+      <div><h4>How it's calculated</h4>
+        <p style="margin:4px 0 8px">${esc(x.weighting)} Across its counties, ${esc(name)} comes out at ${x.exposure_factor.toFixed(2)}× the U.S. average.</p>
+        <div class="formula">${esc(x.formula)}</div>
+        <h4>Counties with the most extra homes</h4><ul style="margin:4px 0 0;padding-left:20px">${counties}</ul></div>
+    </div>
+    <h4>Assumptions</h4>
+    <p class="hint">The low estimate uses every low value at once and the high estimate every high value, so the range is deliberately wide. "Team judgment" values are anchored to the cited research but not measured by it; they are the first to revisit.</p>
+    <table class="assume"><thead><tr><th>Assumption</th><th>Low</th><th>Central</th><th>High</th><th>Basis</th><th>Why</th></tr></thead><tbody>${rows}</tbody></table>
+    <h4>What this doesn't capture</h4>
+    <ul style="margin:4px 0 0;padding-left:20px">${x.gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>
+    <details><summary>Full model output (the text the expert agents read)</summary><pre>${esc(s.explanation)}</pre></details>
+  </div>`;
 }
 
 async function ask() {
@@ -214,10 +294,11 @@ async function ask() {
     const r = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: $("question").value, state: $("state").value }) });
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || r.statusText);
+    studies = Object.assign(studies, d.studies);
     const flags = d.citation_issues.length;
     $("result").innerHTML = `
       <div class="answer">
-        <div class="row" style="gap:10px;margin:10px 0"><span class="muted">Experts consulted:</span><span class="chips">${d.consulted.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</span></div>
+        <div class="row" style="gap:10px;margin:10px 0"><span class="muted">Experts consulted:</span><span class="chips">${d.experts.map((c) => `<span class="chip" title="${esc(c.id)}">${esc(c.label)}</span>`).join("")}</span></div>
         <div class="muted" style="font-size:12.5px">Models: ${esc(d.models)}</div>
         ${md(d.text.split("\n## Citation check (automatic)")[0])}
         <div class="check ${flags ? "flag" : "ok"}">${flags ? `Citation check: ${flags} figure(s) could not be traced to a tool result.<br>` + d.citation_issues.map(esc).join("<br>") : "Citation check passed: every figure traces to the evidence base, the state data, or the scenario model."}</div>
