@@ -1,0 +1,26 @@
+{
+  // GitHub Codespaces / dev container for the State Housing Policy Lab.
+  // Opening a codespace builds the tool, then starts the web UI on port 8787.
+  // With an OPENROUTER_API_KEY Codespaces secret it uses the live open models
+  // (gpt-oss-120b leader, gpt-oss-20b experts); without one, offline models.
+  "name": "State Housing Policy Lab",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "hostRequirements": { "cpus": 4, "memory": "8gb" },
+  "secrets": {
+    "OPENROUTER_API_KEY": {
+      "description": "Optional. An OpenRouter API key, to run the expert panel on live Apache-2.0 models (gpt-oss-120b and gpt-oss-20b). Leave blank to use the offline models.",
+      "documentationUrl": "https://openrouter.ai/keys"
+    }
+  },
+  // Compile both builds up front so the UI starts in seconds.
+  "postCreateCommand": "cargo build --release --manifest-path agents/Cargo.toml --bins && cargo build --release --features llm --manifest-path agents/Cargo.toml --bin housing-web",
+  "postAttachCommand": { "web": "scripts/start.sh" },
+  "forwardPorts": [8787],
+  "portsAttributes": {
+    "8787": { "label": "Housing Policy Lab", "onAutoForward": "openBrowser" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] },
+    "vscode": { "extensions": ["rust-lang.rust-analyzer"] }
+  }
+}
