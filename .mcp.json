@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "housing-ontology": {
+      "command": "cargo",
+      "args": ["run", "--quiet", "--release", "--manifest-path", "agents/Cargo.toml", "--bin", "housing-mcp"]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+research/data/raw/
+# Paper PDFs are downloaded locally by research/papers/fetch_papers.sh and never committed (third-party content; Official Rules §7.a, §7.b.ii).
+research/papers/pdfs/
+agents/target/
+# Local secrets (API keys). Commit only .env.example.
+.env
+**/.env
+# Python bytecode from running the pipeline scripts.
+__pycache__/

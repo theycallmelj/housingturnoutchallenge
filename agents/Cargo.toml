@@ -1,0 +1,48 @@
+[package]
+name = "housing-agents"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Expert agents, an orchestrator and an MCP server over the housing policy evidence ontology, built on condesate."
+publish = false
+
+[features]
+# Open-weight models (Apache-2.0 only, see model-registry.json) served by any
+# OpenAI-compatible server such as Ollama or vLLM. Off by default: the
+# offline, deterministic models answer from the ontology alone, so builds and
+# tests never need network access. TLS uses the OS certificate store
+# (rustls-native-certs), not a bundled CA list.
+llm = ["dep:reqwest"]
+
+[dependencies]
+condesate = "0.1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "net"] }
+async-trait = "0.1"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-native-roots"], optional = true }
+
+[[bin]]
+name = "housing-ask"
+path = "src/bin/housing_ask.rs"
+
+[[bin]]
+name = "housing-eval"
+path = "src/bin/housing_eval.rs"
+
+[[bin]]
+name = "housing-model"
+path = "src/bin/housing_model.rs"
+
+[[bin]]
+name = "housing-web"
+path = "src/bin/housing_web.rs"
+
+[[bin]]
+name = "housing-mcp"
+path = "src/bin/housing_mcp.rs"
+
+[[bin]]
+name = "housing-fit"
+path = "src/bin/housing_fit.rs"

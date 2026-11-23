@@ -1,0 +1,48 @@
+{
+  "required_license": "Apache-2.0",
+  "license_check": "License read from each model's Hugging Face card metadata (huggingface.co/api/models/<repo>, cardData.license) on 2026-11-03.",
+  "openrouter_check": "openrouter_id values checked against https://openrouter.ai/api/v1/models on 2026-11-15; null means OpenRouter does not list the model.",
+  "capability_rank_note": "Ordinal used only to enforce 'leader is stronger than every expert'. Ranked by parameter scale and generation within this registry; it is not a benchmark score. Change it if the team benchmarks the models on our tasks.",
+  "default_profile": "laptop",
+  "profiles": {
+    "laptop": {
+      "description": "Runs on an 8 GB Apple Silicon laptop with Ollama (one model resident at a time).",
+      "leader": "qwen3-4b",
+      "expert": "qwen3-1.7b"
+    },
+    "workstation": {
+      "description": "32 GB+ unified memory or a 24 GB GPU.",
+      "leader": "qwen3-32b",
+      "expert": "qwen3-8b"
+    },
+    "server": {
+      "description": "One 80 GB GPU for the leader; experts fit in 16 GB.",
+      "leader": "gpt-oss-120b",
+      "expert": "gpt-oss-20b"
+    },
+    "openrouter": {
+      "description": "Hosted on OpenRouter; no local GPU needed. gpt-oss-120b leads ($0.15/$0.60 per 1M tokens on 2026-11-15), gpt-oss-20b experts ($0.03/$0.13).",
+      "leader": "gpt-oss-120b",
+      "expert": "gpt-oss-20b"
+    }
+  },
+  "models": [
+    {"id": "qwen3-0.6b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-0.6B", "ollama_tag": "qwen3:0.6b", "license": "Apache-2.0", "params_b": 0.6, "download_gb": 0.5, "capability_rank": 1, "openrouter_id": null},
+    {"id": "qwen3-1.7b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-1.7B", "ollama_tag": "qwen3:1.7b", "license": "Apache-2.0", "params_b": 1.7, "download_gb": 1.4, "capability_rank": 2, "openrouter_id": null},
+    {"id": "qwen3-4b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-4B", "ollama_tag": "qwen3:4b", "license": "Apache-2.0", "params_b": 4, "download_gb": 2.5, "capability_rank": 3, "openrouter_id": null},
+    {"id": "granite-3.3-8b", "family": "granite", "hf_repo": "ibm-granite/granite-3.3-8b-instruct", "ollama_tag": "granite3.3:8b", "license": "Apache-2.0", "params_b": 8, "download_gb": 4.9, "capability_rank": 4, "openrouter_id": null},
+    {"id": "qwen3-8b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-8B", "ollama_tag": "qwen3:8b", "license": "Apache-2.0", "params_b": 8, "download_gb": 5.2, "capability_rank": 4, "openrouter_id": null},
+    {"id": "qwen3-14b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-14B", "ollama_tag": "qwen3:14b", "license": "Apache-2.0", "params_b": 14, "download_gb": 9.3, "capability_rank": 5, "openrouter_id": "qwen/qwen3-14b"},
+    {"id": "gpt-oss-20b", "family": "gpt-oss", "hf_repo": "openai/gpt-oss-20b", "ollama_tag": "gpt-oss:20b", "license": "Apache-2.0", "params_b": 21, "download_gb": 14, "capability_rank": 6, "openrouter_id": "openai/gpt-oss-20b"},
+    {"id": "mistral-small-3.2-24b", "family": "mistral", "hf_repo": "mistralai/Mistral-Small-3.2-24B-Instruct-2506", "ollama_tag": "mistral-small3.2:24b", "license": "Apache-2.0", "params_b": 24, "download_gb": 15, "capability_rank": 6, "openrouter_id": "mistralai/mistral-small-3.2-24b-instruct"},
+    {"id": "qwen3-30b-a3b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-30B-A3B", "ollama_tag": "qwen3:30b", "license": "Apache-2.0", "params_b": 30, "download_gb": 19, "capability_rank": 6, "openrouter_id": "qwen/qwen3-30b-a3b"},
+    {"id": "qwen3-32b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-32B", "ollama_tag": "qwen3:32b", "license": "Apache-2.0", "params_b": 32, "download_gb": 20, "capability_rank": 7, "openrouter_id": "qwen/qwen3-32b"},
+    {"id": "gpt-oss-120b", "family": "gpt-oss", "hf_repo": "openai/gpt-oss-120b", "ollama_tag": "gpt-oss:120b", "license": "Apache-2.0", "params_b": 117, "download_gb": 65, "capability_rank": 8, "openrouter_id": "openai/gpt-oss-120b"},
+    {"id": "qwen3-235b-a22b", "family": "qwen3", "hf_repo": "Qwen/Qwen3-235B-A22B", "ollama_tag": "qwen3:235b", "license": "Apache-2.0", "params_b": 235, "download_gb": 142, "capability_rank": 9, "openrouter_id": null}
+  ],
+  "rejected": [
+    {"id": "llama-3.1-8b", "hf_repo": "meta-llama/Llama-3.1-8B-Instruct", "license": "llama3.1", "reason": "Llama 3.1 Community License, not Apache-2.0"},
+    {"id": "gemma-3-4b", "hf_repo": "google/gemma-3-4b-it", "license": "gemma", "reason": "Gemma Terms of Use, not Apache-2.0"},
+    {"id": "claude", "hf_repo": "", "license": "proprietary", "reason": "Proprietary hosted model, not Apache-2.0"}
+  ]
+}

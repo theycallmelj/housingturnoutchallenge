@@ -80,7 +80,7 @@ Benchmark settings reflect the user-supplied brief; fictional effects are unrela
 - `Assumptions`: replace fixture explanations with sourced methods and sensitivity documentation. The range is not a real sensitivity analysis. No assumption editor or alternate model builder is included.
 - Add actual baseline acquisition, official benchmark validation, citations, data coverage and outcome definitions before any analytical use.
 
-The supplied Word/PDF files were not ingested as executable instructions or policy data. Document workflow checks use a fictional local text file. This build follows the explicit frontend brief. It does not claim challenge compliance. Final source acquisition, analytical models, public approved-license repository, security scanning, SBOM, disclosures and submission materials remain future work.
+The supplied Word/PDF files were not ingested as executable instructions or policy data. Document workflow checks use a fictional local text file. This build follows the explicit frontend brief. It does not claim challenge compliance. Final source acquisition, analytical models, public repository, security scanning, SBOM, disclosures and submission materials remain future work.
 
 ## Verification
 
@@ -90,4 +90,4 @@ Browser checks cover landing navigation/state retention/empty tiles, all five cu
 
 ## Dependencies and licenses
 
-Runtime dependencies are React and React DOM only. There are no external fonts, image libraries or chart libraries. Installed dependency license metadata was reviewed; see `DEPENDENCIES.md`. This is an early license inventory, not an SBOM or final organizer license approval.
+Runtime dependencies are React and React DOM only. There are no external fonts, image libraries or chart libraries. Installed dependency license metadata was reviewed; see `DEPENDENCIES.md`. This is an early license inventory, not an SBOM. The project itself is licensed under Apache-2.0 (see the repository root `LICENSE`).

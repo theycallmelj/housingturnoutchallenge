@@ -1,0 +1,83 @@
+name: LLM evals (live models)
+
+# Runs the panel eval suite against real Apache-2.0 models on OpenRouter.
+# It costs money (a few cents per run), so it does not run on every push:
+#   - manually (Actions tab > LLM evals > Run workflow)
+#   - weekly, to catch model or host drift
+#   - on a pull request labeled "llm-evals"
+# Needs the repository secret OPENROUTER_API_KEY. Without it the job is
+# skipped, not failed. Forked PRs never receive the secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      min_check_rate:
+        description: Minimum share of individual checks that must pass (0-1)
+        default: "0.8"
+      filter:
+        description: Only run case ids containing this text (blank = all)
+        default: ""
+      profile:
+        description: Model profile from agents/model-registry.json
+        default: openrouter
+  schedule:
+    - cron: "0 14 * * 1" # Mondays 14:00 UTC
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-evals-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  live-evals:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'llm-evals')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      HOUSING_LLM_HOST: openrouter
+      HOUSING_MODEL_PROFILE: ${{ inputs.profile || 'openrouter' }}
+      # Model output varies run to run, and with 8 checks per case a 90%
+      # per-check rate gives under half of cases passing everything, so live
+      # runs gate on the share of checks passed. Offline evals (rust.yml)
+      # hold the strict 100% bar. Baseline 2026-11-15: 88% of checks.
+      MIN_CHECK_RATE: ${{ inputs.min_check_rate || '0.8' }}
+      FILTER: ${{ inputs.filter || '' }}
+    steps:
+      - name: Skip without an API key
+        if: env.OPENROUTER_API_KEY == ''
+        run: echo "::notice::OPENROUTER_API_KEY secret is not set; skipping live evals."
+      - uses: actions/checkout@v7
+        if: env.OPENROUTER_API_KEY != ''
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable branch
+        with:
+          toolchain: stable
+        if: env.OPENROUTER_API_KEY != ''
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: env.OPENROUTER_API_KEY != ''
+        with:
+          workspaces: agents
+          key: llm-release
+      - name: housing-eval (live)
+        if: env.OPENROUTER_API_KEY != ''
+        run: |
+          ARGS=(--min-pass-rate 0 --min-check-rate "$MIN_CHECK_RATE" --out eval-report.json --markdown eval-summary.md)
+          if [ -n "$FILTER" ]; then ARGS+=(--filter "$FILTER"); fi
+          cargo run --release --features llm --manifest-path agents/Cargo.toml --bin housing-eval -- "${ARGS[@]}"
+      - name: Job summary
+        if: always() && env.OPENROUTER_API_KEY != ''
+        run: test -f eval-summary.md && cat eval-summary.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always() && env.OPENROUTER_API_KEY != ''
+        with:
+          name: live-eval-report
+          path: |
+            eval-report.json
+            eval-summary.md
+          if-no-files-found: ignore
+          retention-days: 30

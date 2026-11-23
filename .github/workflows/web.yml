@@ -1,0 +1,44 @@
+name: Web prototype (React)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: test + typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: prototypes/state-housing-policy-lab
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          version: 10.20.0
+      - uses: actions/setup-node@v7
+        with:
+          # README: Node 22.12+ required, tested with Node 24.
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: prototypes/state-housing-policy-lab/pnpm-lock.yaml
+      - name: Install (lockfile must be current)
+        run: pnpm install --frozen-lockfile
+      - name: Unit tests
+        run: pnpm test
+      - name: Typecheck + production build
+        run: pnpm build
+      - name: SBOM matches the lockfile
+        run: |
+          FETCH_LICENSE=false npx --yes @cyclonedx/cdxgen@12.9.0 -t pnpm --spec-version 1.5 --no-recurse -o "$RUNNER_TEMP/sbom.cdx.json" .
+          python3 ../../scripts/sbom_diff.py sbom.cdx.json "$RUNNER_TEMP/sbom.cdx.json"
