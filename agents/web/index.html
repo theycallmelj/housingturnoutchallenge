@@ -469,9 +469,11 @@ function renderPaths() {
     tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px">${yr}</div>Actual: <b>${fmt(actual)}</b>` +
       (fc.length ? `<div style="margin-top:6px;color:var(--muted)">Forecasts for ${yr}:</div>` + fc.map((c) => `<div>made in ${c.o} (${yr - c.o} yr${yr - c.o > 1 ? "s" : ""} ahead): <b>${fmt(c.v)}</b> <span style="color:var(--muted)">${signed(c.v / actual - 1)}</span></div>`).join("") : `<div style="margin-top:4px;color:var(--muted)">No back-test forecast for this year.</div>`);
     tip.style.display = "block";
+    // Keep the tooltip on the far side of the cursor so it doesn't hide the lines being read.
     const px = x(yr) * r.width / W;
-    tip.style.left = Math.min(px + 14, r.width - tip.offsetWidth - 4) + "px";
-    tip.style.top = "8px";
+    tip.style.left = (px > r.width / 2 ? Math.max(4, px - tip.offsetWidth - 14) : Math.min(px + 14, r.width - tip.offsetWidth - 4)) + "px";
+    // The y-axis starts at zero, so the lines sit high and the bottom of the plot is usually empty.
+    tip.style.top = Math.max(4, (y(0) - 6) * r.height / H - tip.offsetHeight) + "px";
   });
   box.querySelector("#bt-hit").addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
 }
