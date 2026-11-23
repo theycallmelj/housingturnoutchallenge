@@ -29,6 +29,16 @@ const BACKTEST_JSON: &str = include_str!("../../data/derived/backtest.json");
 pub const ORIGINS: [u32; 10] = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024];
 /// First year of the actual series stored for charts.
 pub const SERIES_FROM: u32 = 2010;
+/// Years distorted by COVID-19: the spring 2020 drop, then the 2021 surge
+/// (record-low rates, moves out of cities). A forecast is COVID-affected if
+/// it is made from, or for, one of these years.
+pub const COVID_YEARS: [u32; 2] = [2020, 2021];
+
+/// Whether a forecast made at `origin` for year `t` touches the COVID years.
+pub fn covid_affected(origin: u32, t: u32) -> bool {
+    let c = COVID_YEARS[0]..=COVID_YEARS[1];
+    c.contains(&origin) || c.contains(&t)
+}
 
 /// Errors for one forecast distance, for the model and the two simple rules.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -94,6 +104,11 @@ pub struct DecadeBacktest {
     /// State-level forecasts scored (state x start year x years ahead).
     pub forecasts_scored: usize,
     pub by_horizon: Vec<HorizonRow>,
+    /// The same, leaving out forecasts made from or for the COVID years.
+    /// (Every five-year window from 2016 includes 2020 or 2021, so five-year
+    /// totals have no COVID-free version.)
+    pub covid_years: [u32; 2],
+    pub by_horizon_excl_covid: Vec<HorizonRow>,
     pub by_type: Vec<TypeRow>,
     pub five_year_totals: FiveYear,
     pub national_by_year: Vec<YearRow>,
@@ -176,11 +191,26 @@ pub fn run(p: &Panel) -> DecadeBacktest {
 /// (actual, predicted) pairs.
 type Pairs = Vec<(f64, f64)>;
 
+fn horizon_rows(pairs: &[[Pairs; 3]]) -> Vec<HorizonRow> {
+    pairs
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| !p[0].is_empty())
+        .map(|(k, p)| HorizonRow {
+            years_ahead: k + 1,
+            model: metrics(&p[0]),
+            last_year: metrics(&p[1]),
+            five_year_avg: metrics(&p[2]),
+        })
+        .collect()
+}
+
 fn summarize(acc: BTreeMap<String, StateAcc>) -> DecadeBacktest {
     let tot = |a: &StateAcc, t: u32| a.actual[0][idx(t)] + a.actual[1][idx(t)];
     let avg5 = |v: &dyn Fn(u32) -> f64, o: u32| (o - 4..=o).map(v).sum::<f64>() / 5.0;
     // (actual, predicted) pairs by horizon for model / last year / 5-yr avg.
     let mut pairs: Vec<[Pairs; 3]> = (0..HORIZON).map(|_| Default::default()).collect();
+    let mut pairs_ex: Vec<[Pairs; 3]> = (0..HORIZON).map(|_| Default::default()).collect();
     // [years ahead][building type][model, last year]
     let mut by_type_pairs: Vec<[[Pairs; 2]; 2]> =
         (0..HORIZON).map(|_| Default::default()).collect();
@@ -204,6 +234,11 @@ fn summarize(acc: BTreeMap<String, StateAcc>) -> DecadeBacktest {
                     pairs[k][0].push((actual, m));
                     pairs[k][1].push((actual, last));
                     pairs[k][2].push((actual, avg));
+                    if !covid_affected(o, t) {
+                        pairs_ex[k][0].push((actual, m));
+                        pairs_ex[k][1].push((actual, last));
+                        pairs_ex[k][2].push((actual, avg));
+                    }
                     if k == 0 {
                         miss1.push((m / actual - 1.0).abs());
                     }
@@ -323,16 +358,9 @@ fn summarize(acc: BTreeMap<String, StateAcc>) -> DecadeBacktest {
         series_from: SERIES_FROM,
         tested_years: [ORIGINS[0] + 1, LAST_YEAR],
         forecasts_scored,
-        by_horizon: pairs
-            .iter()
-            .enumerate()
-            .map(|(k, p)| HorizonRow {
-                years_ahead: k + 1,
-                model: metrics(&p[0]),
-                last_year: metrics(&p[1]),
-                five_year_avg: metrics(&p[2]),
-            })
-            .collect(),
+        by_horizon: horizon_rows(&pairs),
+        covid_years: COVID_YEARS,
+        by_horizon_excl_covid: horizon_rows(&pairs_ex),
         by_type: by_type_pairs
             .iter()
             .enumerate()
@@ -386,6 +414,12 @@ mod tests {
         assert_eq!(b.states["09"].paths.len(), 5);
         // Further ahead, fewer start years can be checked against actuals.
         assert!(b.by_horizon[4].model.n < b.by_horizon[0].model.n);
+        // Leaving out COVID-affected forecasts keeps every distance but
+        // scores fewer forecasts.
+        assert_eq!(b.by_horizon_excl_covid.len(), HORIZON);
+        for (a, x) in b.by_horizon.iter().zip(&b.by_horizon_excl_covid) {
+            assert!(x.model.n < a.model.n && x.model.n > 0);
+        }
         // The national actual series matches the panel.
         let total_2025: f64 = b.states.values().map(|s| *s.actual.last().unwrap()).sum();
         assert!((total_2025 - b.national.actual.last().unwrap()).abs() <= 51.0);
@@ -411,6 +445,11 @@ mod tests {
         let b = summarize(acc);
         let h1 = &b.by_horizon[0];
         assert!((h1.model.median_abs_pct_error - 0.10).abs() < 1e-9);
+        // One year ahead without COVID: start years 2015-2018 and 2022-2024.
+        assert_eq!(b.by_horizon_excl_covid[0].model.n, 7);
+        assert!(
+            covid_affected(2019, 2020) && covid_affected(2021, 2022) && !covid_affected(2022, 2023)
+        );
         assert_eq!(h1.last_year.median_abs_pct_error, 0.0);
         assert_eq!(h1.five_year_avg.median_abs_pct_error, 0.0);
         // By type: 1-unit exact, 2+ units 25% high.

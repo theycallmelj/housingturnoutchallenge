@@ -69,6 +69,7 @@ The web UI's **How we tested the model** section shows a ten-year back-test of t
 - **Five-year state totals:** typical miss 12.5%, against 12.9% for repeating last year and 20.0% for the five-year average.
 - **One year ahead:** repeating last year is slightly better (8.7% vs. 9.8%).
 - **Bias:** the model has tended to run low, so the baseline's range extends further above its central estimate than below.
+- **COVID:** forecasts made from or for 2020-2021 are greyed out and left out of the scores by default, with a switch to include them. Without them, the model ties repeating last year three years ahead and pulls ahead after that (five years ahead: 16.5% vs. 18.4%).
 
 Code: [`agents/src/backtest.rs`](agents/src/backtest.rs); results: [`data/derived/backtest.json`](data/derived/backtest.json). `housing-fit --check` re-runs it in CI and fails if any number changes.
 

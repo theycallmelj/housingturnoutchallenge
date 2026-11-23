@@ -138,6 +138,8 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                     "tested_years": b.tested_years,
                     "forecasts_scored": b.forecasts_scored,
                     "by_horizon": b.by_horizon,
+                    "covid_years": b.covid_years,
+                    "by_horizon_excl_covid": b.by_horizon_excl_covid,
                     "by_type": b.by_type,
                     "five_year_totals": b.five_year_totals,
                     "national_by_year": b.national_by_year,

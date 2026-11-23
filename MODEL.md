@@ -88,6 +88,18 @@ Nationally, both methods ran low during the 2016-2024 recovery (the model by 13-
 - The test uses today's revised data, not the vintages a forecaster would have seen at the time.
 - The model's value over a simple rule is that it responds to rates, migration and prices, works county by county, and gives the scenarios a base that moves with conditions. It is not more accurate at short range.
 
+**Leaving out COVID.** COVID-19 distorted 2020 and 2021: permits dipped in spring 2020, then surged in 2021. No forecast made from earlier data could foresee that, and forecasts made *from* those years started from unusual levels. Leaving out every forecast made from or for 2020 or 2021 gives the table below (the web UI's "Leave out COVID years" switch, on by default). Five-year totals have no COVID-free version, because every five-year window from 2016 to 2025 includes 2020 or 2021.
+
+| Forecast | State forecasts | County model | Repeat last year | Repeat 5-year average |
+| --- | --- | --- | --- | --- |
+| 1 year ahead | 354 | 9.5% | 8.2% | 12.7% |
+| 2 years ahead | 253 | 12.7% | 10.5% | 15.4% |
+| 3 years ahead | 203 | 12.9% | 13.0% | 18.5% |
+| 4 years ahead | 153 | 15.1% | 15.4% | 21.5% |
+| 5 years ahead | 153 | 16.5% | 18.4% | 20.8% |
+
+Without the COVID years, the model ties repeating last year three years ahead and is ahead at four and five years. Repeating last year is still better one and two years ahead.
+
 For comparison, every output also shows the previous rule (the 2021-2025 pace repeated). Example: Pennsylvania's model baseline is 118,150 permits, against 151,880 for the 2021-2025 pace. That pace includes Philadelphia's 2021 spike of 21,900 permits in 5+ unit buildings ahead of a tax-abatement change, which the model doesn't project forward.
 
 ## Mechanics
