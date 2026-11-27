@@ -1,0 +1,46 @@
+name: Codespace setup
+
+# Builds the tool inside the same image as .devcontainer/devcontainer.json,
+# runs its setup commands, and checks that scripts/start.sh serves the UI,
+# so a judge opening a codespace gets a working app.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codespace-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  devcontainer:
+    name: build + start in the dev container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      # Keep in sync with .devcontainer/devcontainer.json.
+      image: mcr.microsoft.com/devcontainers/rust:1-bookworm
+    steps:
+      - uses: actions/checkout@v7
+      - name: Dev container setup (postCreateCommand)
+        run: |
+          cargo build --release --manifest-path agents/Cargo.toml --bins
+          cargo build --release --features llm --manifest-path agents/Cargo.toml --bin housing-web
+      - name: scripts/start.sh serves the UI (offline models, no key)
+        run: |
+          HOUSING_WEB_PORT=8787 scripts/start.sh > start.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:8787/api/states > /dev/null && break
+            sleep 2
+          done
+          cat start.log
+          curl -sf http://127.0.0.1:8787/ | grep -q "How we tested the model"
+          curl -sf "http://127.0.0.1:8787/api/compare?state=PA" | grep -q '"baseline"'
+          curl -sf "http://127.0.0.1:8787/api/backtest?state=PA" | grep -q '"by_horizon"'
+          grep -q "offline models" start.log
+          echo "UI is up"

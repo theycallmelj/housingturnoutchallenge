@@ -1,20 +1,22 @@
 //! Fit the baseline permit model and back-test it; writes
-//! `data/derived/baseline_model.json`.
+//! `data/derived/baseline_model.json` and the ten-year back-test
+//! `data/derived/backtest.json`.
 //!
 //!     cargo run --release --manifest-path agents/Cargo.toml --bin housing-fit
 //!     cargo run --release --manifest-path agents/Cargo.toml --bin housing-fit -- --check
 //!
 //! `--check` refits from the committed panel and fails if the result differs
-//! from the committed model file (relative tolerance 1e-4), so CI catches a
+//! from the committed files (relative tolerance 1e-4), so CI catches a
 //! model file that is out of date with its data or code.
 
-use housing_agents::forecast;
+use housing_agents::{backtest, forecast};
 use serde_json::Value;
 
 const PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../data/derived/baseline_model.json"
 );
+const BACKTEST_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../data/derived/backtest.json");
 
 fn diffs(a: &Value, b: &Value, path: &str, out: &mut Vec<String>) {
     match (a, b) {
@@ -91,23 +93,65 @@ fn main() -> anyhow::Result<()> {
             eprintln!("    {k:<28} {v:>10.5}");
         }
     }
-    if check {
-        let committed: Value = serde_json::from_str(&std::fs::read_to_string(PATH)?)?;
-        let mut out = Vec::new();
-        diffs(&fresh, &committed, "model", &mut out);
-        if !out.is_empty() {
-            for d in out.iter().take(20) {
-                eprintln!("  {d}");
+    let started = std::time::Instant::now();
+    let bt = backtest::run(forecast::panel());
+    eprintln!(
+        "ten-year back-test ({} start years, {} state forecasts) in {:.1}s",
+        bt.origins.len(),
+        bt.forecasts_scored,
+        started.elapsed().as_secs_f64()
+    );
+    for r in &bt.by_horizon {
+        eprintln!(
+            "  {} yr ahead (n {}): median error model {:.1}%, repeat last year {:.1}%, 5-yr average {:.1}%",
+            r.years_ahead,
+            r.model.n,
+            100.0 * r.model.median_abs_pct_error,
+            100.0 * r.last_year.median_abs_pct_error,
+            100.0 * r.five_year_avg.median_abs_pct_error
+        );
+    }
+    let f = &bt.five_year_totals;
+    eprintln!(
+        "  five-year totals (n {}): median error model {:.1}%, repeat last year {:.1}%, 5-yr average {:.1}%",
+        f.model.n,
+        100.0 * f.model.median_abs_pct_error,
+        100.0 * f.last_year.median_abs_pct_error,
+        100.0 * f.five_year_avg.median_abs_pct_error
+    );
+    for r in &bt.national_by_year {
+        eprintln!(
+            "  U.S. {}: actual {:.0}, model {:.0} ({:+.1}%), last year {:+.1}%",
+            r.year,
+            r.actual,
+            r.model,
+            100.0 * (r.model / r.actual - 1.0),
+            100.0 * (r.last_year / r.actual - 1.0)
+        );
+    }
+    let fresh_bt = serde_json::to_value(&bt)?;
+    for (path, fresh, name) in [
+        (PATH, &fresh, "model"),
+        (BACKTEST_PATH, &fresh_bt, "backtest"),
+    ] {
+        if check {
+            let committed: Value = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+            let mut out = Vec::new();
+            diffs(fresh, &committed, name, &mut out);
+            if !out.is_empty() {
+                for d in out.iter().take(20) {
+                    eprintln!("  {d}");
+                }
+                anyhow::bail!(
+                    "{} values differ from {path}; rerun housing-fit and commit",
+                    out.len()
+                );
             }
-            anyhow::bail!(
-                "{} values differ from {PATH}; rerun housing-fit and commit",
-                out.len()
-            );
+            eprintln!("committed {name} matches a fresh run");
+        } else {
+            std::fs::write(path, serde_json::to_string(fresh)? + "\n")?;
+            eprintln!("wrote {path}");
         }
-        eprintln!("committed model matches a fresh fit");
-    } else {
-        std::fs::write(PATH, serde_json::to_string_pretty(&fresh)? + "\n")?;
-        eprintln!("wrote {PATH}");
     }
     Ok(())
 }

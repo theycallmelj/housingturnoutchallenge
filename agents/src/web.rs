@@ -125,9 +125,54 @@ pub fn route_static(method: &str, path: &str) -> Option<Reply> {
                 }),
             ))
         }
+        ("GET", "/api/backtest") => {
+            let b = crate::backtest::decade();
+            let st = query_param(query, "state").and_then(state::find);
+            let series = st.and_then(|s| b.states.get(&s.fips));
+            Some(json_reply(
+                200,
+                json!({
+                    "description": b.description,
+                    "origins": b.origins,
+                    "series_from": b.series_from,
+                    "tested_years": b.tested_years,
+                    "forecasts_scored": b.forecasts_scored,
+                    "by_horizon": b.by_horizon,
+                    "covid_years": b.covid_years,
+                    "by_horizon_excl_covid": b.by_horizon_excl_covid,
+                    "by_type": b.by_type,
+                    "five_year_totals": b.five_year_totals,
+                    "national_by_year": b.national_by_year,
+                    "national": b.national,
+                    "state": st.map(|s| json!({"abbr": s.abbr, "name": s.name})),
+                    "state_series": series,
+                    "timing": timing_backtest(),
+                }),
+            ))
+        }
         ("POST", "/api/ask") => None,
         _ => Some(json_reply(404, json!({"error": "not found"}))),
     }
+}
+
+/// Survey of Construction curves applied to actual permits vs. published
+/// completions, by region and year (from `fetch_construction_timing.py`).
+fn timing_backtest() -> Value {
+    const CSV: &str = include_str!("../../data/derived/construction_curves_backtest.csv");
+    let rows: Vec<Value> = CSV
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let r: Vec<&str> = l.split(',').collect();
+            Some(json!({
+                "region": r.first()?,
+                "year": r.get(1)?.parse::<u32>().ok()?,
+                "implied_thousands": r.get(2)?.parse::<f64>().ok()?,
+                "published_thousands": r.get(3)?.parse::<f64>().ok()?,
+            }))
+        })
+        .collect();
+    Value::Array(rows)
 }
 
 /// Title, authors, year and link for every ontology study id that appears in
@@ -294,6 +339,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn backtest_route_returns_state_and_national_series() {
+        let r = route_static("GET", "/api/backtest?state=PA").unwrap();
+        assert_eq!(r.status, 200);
+        let v: Value = serde_json::from_str(&r.body).unwrap();
+        assert_eq!(v["state"]["abbr"], "PA");
+        assert_eq!(v["state_series"]["actual"].as_array().unwrap().len(), 16);
+        assert_eq!(v["national_by_year"].as_array().unwrap().len(), 10);
+        assert_eq!(v["timing"].as_array().unwrap().len(), 28);
+        // Without a state, the national numbers still come back.
+        let r = route_static("GET", "/api/backtest").unwrap();
+        let v: Value = serde_json::from_str(&r.body).unwrap();
+        assert!(v["state_series"].is_null());
+        assert_eq!(v["by_horizon"].as_array().unwrap().len(), 5);
     }
 
     #[test]

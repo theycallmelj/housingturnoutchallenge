@@ -16,6 +16,11 @@ updates:
     groups:
       npm-minor:
         update-types: [minor, patch]
+    ignore:
+      # Vite 8 depends on lightningcss (MPL-2.0), which AGENTS.md section 1
+      # does not allow. Security fixes for Vite 7 still arrive as patches.
+      - dependency-name: vite
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:

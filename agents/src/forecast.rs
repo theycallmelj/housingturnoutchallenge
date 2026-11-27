@@ -572,7 +572,7 @@ pub fn fit(p: &Panel, g: Group, last_year: u32) -> GroupFit {
 }
 
 /// Six significant digits, so the committed model is stable across machines.
-fn round(x: f64) -> f64 {
+pub(crate) fn round(x: f64) -> f64 {
     if x == 0.0 || !x.is_finite() {
         return x;
     }
@@ -825,7 +825,7 @@ fn state_errors(p: &Panel, origin: u32) -> BTreeMap<String, (f64, f64, f64)> {
     out
 }
 
-fn metrics(pairs: &[(f64, f64)]) -> Metrics {
+pub(crate) fn metrics(pairs: &[(f64, f64)]) -> Metrics {
     // pairs: (actual, predicted)
     let mut abs: Vec<f64> = pairs.iter().map(|(a, p)| (p / a - 1.0).abs()).collect();
     let mut logs: Vec<f64> = pairs.iter().map(|(a, p)| (a / p).ln()).collect();

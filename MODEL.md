@@ -69,6 +69,37 @@ Nationally, both methods ran low during the 2016-2024 recovery (the model by 13-
 
 **Range.** The 10th to 90th percentile of actual ÷ forecast in the back-test: ×0.91 to ×1.32 the central forecast. It leans upward because the model has tended to run low. The central value isn't bias-corrected, because the past six windows were mostly a recovery and permits have fallen since 2022.
 
+**Ten-year back-test** ([`agents/src/backtest.rs`](agents/src/backtest.rs), results in [`data/derived/backtest.json`](data/derived/backtest.json), shown in the web UI under "How we tested the model"). For every start year 2015-2024, `housing-fit` refits the model on data through that year only and forecasts 1-5 years ahead, stopping at 2025. Conditions are held at start-year values, as in production. Every year 2016-2025 is forecast before the model sees it: 2,025 state forecasts in all. Median error of state totals (lower is better):
+
+| Forecast | State forecasts | County model | Repeat last year | Repeat 5-year average |
+| --- | --- | --- | --- | --- |
+| 1 year ahead | 505 | 9.8% | 8.7% | 13.7% |
+| 2 years ahead | 455 | 14.0% | 12.1% | 16.2% |
+| 3 years ahead | 405 | 16.5% | 14.0% | 17.9% |
+| 4 years ahead | 355 | 17.4% | 15.9% | 20.5% |
+| 5 years ahead | 305 | 18.6% | 19.3% | 24.3% |
+| **Five-year total** | 305 | **12.5%** | 12.9% | 20.0% |
+
+- Over five years the model is about as accurate as repeating last year and much better than the five-year average.
+- One to four years ahead, repeating last year is slightly better, because permits change little from one year to the next.
+- Nationally, the one-year-ahead forecast came in low in 9 of 10 years.
+- By building type, one year ahead: 1-unit 8.6% vs. 8.0% for repeating last year; 2+ units 19.3% vs. 19.1%.
+- Connecticut is tested for start years 2015-2019 only: Census replaced its counties with planning regions in 2022, so no county has a consistent history after that.
+- The test uses today's revised data, not the vintages a forecaster would have seen at the time.
+- The model's value over a simple rule is that it responds to rates, migration and prices, works county by county, and gives the scenarios a base that moves with conditions. It is not more accurate at short range.
+
+**Leaving out COVID.** COVID-19 distorted 2020 and 2021: permits dipped in spring 2020, then surged in 2021. No forecast made from earlier data could foresee that, and forecasts made *from* those years started from unusual levels. Leaving out every forecast made from or for 2020 or 2021 gives the table below (the web UI's "Leave out COVID years" switch, on by default). Five-year totals have no COVID-free version, because every five-year window from 2016 to 2025 includes 2020 or 2021.
+
+| Forecast | State forecasts | County model | Repeat last year | Repeat 5-year average |
+| --- | --- | --- | --- | --- |
+| 1 year ahead | 354 | 9.5% | 8.2% | 12.7% |
+| 2 years ahead | 253 | 12.7% | 10.5% | 15.4% |
+| 3 years ahead | 203 | 12.9% | 13.0% | 18.5% |
+| 4 years ahead | 153 | 15.1% | 15.4% | 21.5% |
+| 5 years ahead | 153 | 16.5% | 18.4% | 20.8% |
+
+Without the COVID years, the model ties repeating last year three years ahead and is ahead at four and five years. Repeating last year is still better one and two years ahead.
+
 For comparison, every output also shows the previous rule (the 2021-2025 pace repeated). Example: Pennsylvania's model baseline is 118,150 permits, against 151,880 for the 2021-2025 pace. That pace includes Philadelphia's 2021 spike of 21,900 permits in 5+ unit buildings ahead of a tax-abatement change, which the model doesn't project forward.
 
 ## Mechanics

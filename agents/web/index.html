@@ -82,6 +82,49 @@
   .badge.study { background: var(--good-soft); color: var(--good); }
   .badge.judgment { background: var(--warn-soft); color: var(--warn); }
   a.cite { color: var(--accent); text-decoration: none; border-bottom: 1px dotted var(--accent); font-weight: 600; white-space: nowrap; }
+  header nav { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+  header nav a { color: #fff; background: rgba(255,255,255,.12); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; text-decoration: none; }
+  header nav a:hover { background: rgba(255,255,255,.22); }
+  .viz-root { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --actual: #1d2433; --grid: #e9ecf1; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin: 8px 0 4px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .tile .v { font-size: 26px; font-weight: 700; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
+  .tile .k { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+  .chart { position: relative; margin-top: 6px; }
+  .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .chart text { font: 11px -apple-system, Segoe UI, sans-serif; fill: var(--muted); }
+  .tip { position: absolute; pointer-events: none; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(20,24,34,.12); display: none; min-width: 170px; z-index: 5; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .legend i.sq { height: 10px; width: 10px; border-radius: 3px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: #fff; color: var(--ink); border-radius: 0; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+  .seg button.on { background: var(--accent-soft); color: var(--accent); }
+  .findings li { margin: 5px 0; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .toggle input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .starts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; align-items: center; }
+  .starts button { background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px; font-size: 12.5px; font-weight: 600; }
+  .starts button.on { background: var(--series-1); border-color: var(--series-1); color: #fff; }
+  .starts button:disabled { opacity: .45; cursor: not-allowed; text-decoration: line-through; }
+  .covid-note { margin: 10px 0 0; padding: 10px 14px; border-radius: 8px; background: var(--warn-soft); color: #5c3d00; font-size: 13px; line-height: 1.45; }
+  .tag { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 4px; padding: 0 5px; background: var(--warn-soft); color: var(--warn); margin-left: 6px; vertical-align: 1px; }
+  tr.covid td { color: var(--muted); }
+  table.bt td, table.bt th { padding: 6px 8px; font-size: 13px; }
+  table.bt td.num, table.bt th.num { text-align: right; }
+  .best { color: var(--good); }
+  main { grid-template-columns: minmax(0, 1fr); }
+  .card, .row > div { min-width: 0; }
+  @media (max-width: 700px) {
+    header, main, footer { padding-left: 16px; padding-right: 16px; }
+    .card { padding: 16px; }
+    /* Wide tables scroll inside their card instead of widening the page. */
+    table.years, table.bt, table.assume, #scenarios-card > table { display: block; overflow-x: auto; white-space: nowrap; }
+    table.assume td.why { white-space: normal; min-width: 260px; }
+    .rangebar { min-width: 120px; }
+    .tile .v { font-size: 22px; }
+  }
   footer { max-width: 1120px; margin: 0 auto; padding: 0 32px 32px; color: var(--muted); font-size: 12.5px; }
 </style>
 </head>
@@ -89,9 +132,10 @@
 <header>
   <h1>State Housing Policy Lab</h1>
   <p>Statewide five-year effects of the five benchmark reforms, from Census data and sourced assumptions, explained by a panel of expert agents running on Apache-2.0 models.</p>
+  <nav><a href="#baseline-card">Baseline</a><a href="#testing">How we tested the model</a><a href="#scenarios-card">Reform scenarios</a><a href="#panel-card">Ask the expert panel</a></nav>
 </header>
 <main>
-  <section class="card">
+  <section class="card" id="baseline-card">
     <div class="row">
       <div><label for="state">State</label><br><select id="state"></select></div>
       <div>
@@ -129,7 +173,53 @@
     </div>
   </section>
 
-  <section class="card">
+  <section class="card viz-root" id="testing">
+    <h2>How we tested the model</h2>
+    <p class="sub">We went back in time. For each year from 2015 to 2024 we refitted the baseline model using <b>only the data available that year</b>, had it forecast the next one to five years, and compared the forecasts with the permits actually issued. Every year from 2016 to 2025 was forecast before the model saw it. We scored the same forecasts against two simple rules anyone could use: <b>repeat last year's permits</b>, and <b>repeat the average of the last five years</b>.</p>
+    <div class="tiles" id="bt-tiles"></div>
+
+    <h4 style="margin:18px 0 2px;font-size:14.5px">Forecasts vs. what actually happened</h4>
+    <div class="row" style="gap:10px 14px;margin:6px 0 0">
+      <span class="seg" id="bt-scope"><button data-scope="state" class="on" id="bt-scope-state">State</button><button data-scope="us">United States</button></span>
+      <span class="seg" id="bt-view"><button data-view="one" class="on">One year ahead</button><button data-view="paths">Five-year forecasts</button></span>
+      <label class="toggle"><input type="checkbox" id="bt-covid" checked> Leave out COVID years (2020-2021)</label>
+    </div>
+    <p class="hint" id="bt-paths-hint" style="margin-top:8px"></p>
+    <div class="starts" id="bt-starts"></div>
+    <div class="chart" id="bt-paths"></div>
+    <div class="legend" id="bt-paths-legend"></div>
+    <div class="covid-note"><b>COVID-19 distorted 2020 and 2021.</b> Permits dipped in spring 2020, then surged in 2021 as mortgage rates hit record lows and people moved out of big cities. No forecast made from earlier years could have seen that coming, and forecasts made <i>from</i> those years started from unusual levels. With "Leave out COVID years" on, those forecasts are greyed out here and left out of the error scores below. Five-year totals can't be separated, because every five-year window from 2016 to 2025 includes 2020 or 2021. Not every spike is COVID: Pennsylvania's 2021 jump, for example, came mostly from Philadelphia builders filing ahead of a property-tax abatement change.</div>
+
+    <h4 style="margin:22px 0 2px;font-size:14.5px">Typical miss, by how far ahead the forecast looks</h4>
+    <p class="hint" style="margin:0 0 4px">Median error of state forecasts (lower is better). "5-year total" is the number the challenge asks for: total permits over the next five years. <span id="bt-errors-note"></span></p>
+    <div class="chart" id="bt-errors"></div>
+    <div class="legend"><span><i class="sq" style="background:var(--series-1)"></i>Our model</span><span><i class="sq" style="background:var(--series-2)"></i>Repeat last year</span><span><i class="sq" style="background:var(--series-3)"></i>Repeat 5-year average</span></div>
+    <details><summary>Show as a table</summary><table class="bt" id="bt-errors-table"></table></details>
+
+    <h4 style="margin:22px 0 6px;font-size:14.5px">What the test shows</h4>
+    <ul class="findings" id="bt-findings"></ul>
+
+    <div class="grid2" style="margin-top:6px">
+      <div><h4 style="font-size:14px;margin:12px 0 6px">United States, one year ahead</h4><table class="bt" id="bt-years"></table></div>
+      <div>
+        <h4 style="font-size:14px;margin:12px 0 6px">By building type</h4><table class="bt" id="bt-types"></table>
+        <h4 style="font-size:14px;margin:16px 0 6px">Permits to completed homes</h4>
+        <p class="hint" style="margin:0 0 6px">Our construction-timing curves, applied to the permits actually issued, compared with the completions Census published. 100% means an exact match.</p>
+        <table class="bt" id="bt-timing"></table>
+      </div>
+    </div>
+
+    <h4 style="margin:20px 0 6px;font-size:14.5px">Limits of this test</h4>
+    <ul class="findings hint" style="font-size:13px">
+      <li>We used today's revised Census data. A forecaster in 2018 would have seen earlier, slightly different numbers.</li>
+      <li>Forecasts hold interest rates, migration and price growth at their start-year levels, so they could not see the 2021 surge or the 2022 rate rise coming. That is the honest test of a forecast; the sliders above let you explore other conditions.</li>
+      <li>Connecticut is tested for start years 2015-2019 only: Census replaced its counties with planning regions in 2022, so there is no consistent county history after that.</li>
+      <li>The reform scenarios themselves can't be back-tested this way: most states haven't passed these reforms, so there is no "actual" to compare with. Their assumptions come from the studies cited in each scenario instead.</li>
+      <li>Reproduce it: <code>cargo run --release --manifest-path agents/Cargo.toml --bin housing-fit -- --check</code> refits every year and fails if any number differs from what's shown here. CI runs it on every change.</li>
+    </ul>
+  </section>
+
+  <section class="card" id="scenarios-card">
     <h2>Scenario comparison</h2>
     <p class="sub">How many <b>extra</b> homes each reform would get permitted over 2026-2030, on top of the baseline above, and how many of those would be finished by 2030. The bar shows the plausible range; the blue mark is the central estimate. <b>Click a scenario</b> to see what drives it, the assumptions behind it and the research they come from.</p>
     <table>
@@ -139,7 +229,7 @@
     <p class="note">Scenarios are estimated separately and shouldn't be added together: they overlap and interact. Assumptions are first-pass and editable in <code>agents/assumptions/scenarios.json</code>.</p>
   </section>
 
-  <section class="card">
+  <section class="card" id="panel-card">
     <h2>Ask the expert panel</h2>
     <p class="sub">A leader model routes your question to domain experts. Each expert can only use its own tools (evidence, state data, and the scenario model), and every figure in the answer is checked against what the tools returned.</p>
     <textarea id="question">How many ADUs could a state law add?</textarea>
@@ -205,7 +295,7 @@ async function loadStates() {
   const states = await (await fetch("/api/states")).json();
   $("state").innerHTML = states.map((s) => `<option value="${s.abbr}">${esc(s.name)}</option>`).join("");
   $("state").value = new URLSearchParams(location.search).get("state") || "PA";
-  await loadCompare();
+  await Promise.all([loadCompare(), loadBacktest()]);
 }
 
 function conditions() {
@@ -313,7 +403,232 @@ async function ask() {
   } finally { clearInterval(timer); btn.disabled = false; }
 }
 
+// ---------------------------------------------------------------- back-test
+let bt, btScope = "state", btView = "one", btStart = 2018;
+const covidOn = () => $("bt-covid").checked;
+const isCovid = (origin, year) => bt.covid_years.some((c) => c === origin || c === year);
+// Round axis ticks covering [lo, hi].
+function niceTicks(lo, hi, n = 4) {
+  const raw = (hi - lo) / n || 1, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((v) => v >= raw);
+  const out = [];
+  for (let t = Math.floor(lo / step) * step; ; t += step) { out.push(t); if (t >= hi) break; }
+  return out;
+}
+const pct1 = (x) => (100 * x).toFixed(1) + "%";
+const signed = (x) => (x > 0 ? "+" : "") + (100 * x).toFixed(1) + "%";
+const short = (v) => (v >= 1e6 ? (v / 1e6).toFixed(2) + "M" : v >= 1e4 ? Math.round(v / 1e3) + "k" : v >= 1e3 ? (v / 1e3).toFixed(1) + "k" : String(Math.round(v)));
+const median = (a) => { const v = [...a].sort((x, y) => x - y), n = v.length; return n % 2 ? v[(n - 1) / 2] : (v[n / 2 - 1] + v[n / 2]) / 2; };
+// Bar with rounded data end, square on the baseline.
+const barPath = (x, y, w, h, r = 3) => { r = Math.min(r, h, w / 2); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+
+async function loadBacktest() {
+  bt = await (await fetch("/api/backtest?state=" + $("state").value)).json();
+  $("bt-scope-state").textContent = bt.state ? bt.state.name : "State";
+  renderBacktest();
+}
+
+function renderBacktest() {
+  const rows = covidOn() ? bt.by_horizon_excl_covid : bt.by_horizon;
+  const h1 = rows[0], f = bt.five_year_totals, nat = bt.national_by_year;
+  const covidNote = covidOn() ? " (COVID years left out)" : "";
+  const natScored = covidOn() ? nat.filter((r) => !isCovid(r.year - 1, r.year)) : nat;
+  const low = natScored.filter((r) => r.model < r.actual).length;
+  const bias = median(natScored.map((r) => r.model / r.actual - 1));
+  $("bt-tiles").innerHTML = [
+    [bt.forecasts_scored.toLocaleString("en-US"), `state forecasts checked against the permits actually issued, ${bt.tested_years[0]}-${bt.tested_years[1]}`],
+    [pct1(f.model.median_abs_pct_error), `typical miss on five-year state totals. Repeat last year: ${pct1(f.last_year.median_abs_pct_error)}; repeat 5-year average: ${pct1(f.five_year_avg.median_abs_pct_error)}`],
+    [pct1(h1.model.median_abs_pct_error), `typical miss one year ahead${covidNote}. Repeat last year: ${pct1(h1.last_year.median_abs_pct_error)}`],
+    [`${low} of ${natScored.length}`, `years the national one-year forecast came in low (typical gap ${signed(bias)})${covidNote}`],
+  ].map(([v, k]) => `<div class="tile"><div class="v">${v}</div><div class="k">${esc(k)}</div></div>`).join("");
+  renderPaths();
+  renderErrors();
+
+  const best = (m, l) => (m < l ? "better than" : m > l ? "worse than" : "the same as");
+  const st = bt.state_series, sname = bt.state ? bt.state.name : "";
+  $("bt-findings").innerHTML = [
+    `<b>Five-year totals, the number the challenge asks for:</b> the model's typical miss is ${pct1(f.model.median_abs_pct_error)}, ${best(f.model.median_abs_pct_error, f.last_year.median_abs_pct_error)} repeating last year (${pct1(f.last_year.median_abs_pct_error)}) and much ${best(f.model.median_abs_pct_error, f.five_year_avg.median_abs_pct_error)} repeating the five-year average (${pct1(f.five_year_avg.median_abs_pct_error)}). ${Math.round(100 * f.model.within_20pct)}% of the model's five-year state forecasts were within 20% of what happened.`,
+    (() => {
+      const wins = rows.filter((r) => r.model.median_abs_pct_error < r.last_year.median_abs_pct_error).map((r) => r.years_ahead);
+      const from = wins.length ? Math.min(...wins) : null;
+      return `<b>A year or two ahead, repeating last year is hard to beat</b> (one year ahead: ${pct1(h1.last_year.median_abs_pct_error)} vs. the model's ${pct1(h1.model.median_abs_pct_error)}${covidNote}), because permits rarely change much from one year to the next. ` +
+        (from ? `The model pulls ahead from ${from} year${from > 1 ? "s" : ""} out${covidNote}${(() => { const r = rows[from - 1]; return r.last_year.median_abs_pct_error - r.model.median_abs_pct_error < 0.005 ? ", narrowly at first" : ""; })()}.` : "The model doesn't pull ahead within five years on this measure.");
+    })(),
+    `<b>The model has tended to run low:</b> nationally it came in under the actual count in ${low} of ${natScored.length} years${covidNote}, typically by ${signed(bias).replace("-", "")}. That's why the baseline's plausible range reaches further above the central estimate than below it.`,
+    `<b>Why use a model at all?</b> It is about as accurate as the best simple rule over five years, and unlike a rule it responds to interest rates, migration and house prices (the sliders above), works county by county, and gives every reform scenario a base that moves with the economy.`,
+    st && st.paths.length ? `<b>${esc(sname)}:</b> typical miss ${pct1(st.median_abs_pct_error_1y)} one year ahead and ${pct1(st.median_abs_pct_error_5y)} on five-year totals.` : "",
+    `<b>COVID made 2020-2022 unusually hard to forecast.</b> Including those years, one-year-ahead misses rise to ${pct1(bt.by_horizon[0].model.median_abs_pct_error)} for the model and ${pct1(bt.by_horizon[0].last_year.median_abs_pct_error)} for repeating last year. Use the switch above the chart to compare.`,
+  ].filter(Boolean).map((x) => `<li>${x}</li>`).join("");
+
+  $("bt-years").innerHTML = `<tr><th>Year</th><th class="num">Actual</th><th class="num">Model</th><th class="num">Miss</th><th class="num">Repeat last year</th></tr>` +
+    nat.map((r) => `<tr class="${covidOn() && isCovid(r.year - 1, r.year) ? "covid" : ""}"><td>${r.year}${isCovid(r.year - 1, r.year) ? '<span class="tag">COVID</span>' : ""}</td><td class="num">${fmt(r.actual)}</td><td class="num">${fmt(r.model)}</td><td class="num">${signed(r.model / r.actual - 1)}</td><td class="num">${signed(r.last_year / r.actual - 1)}</td></tr>`).join("");
+
+  const ty = (b, h) => bt.by_type.find((r) => r.building_type === b && r.years_ahead === h);
+  const cell = (m, l) => `<td class="num${m <= l ? " best" : ""}">${pct1(m)}</td><td class="num${l < m ? " best" : ""}">${pct1(l)}</td>`;
+  $("bt-types").innerHTML = `<tr><th></th><th class="num" colspan="2">1 year ahead</th><th class="num" colspan="2">5 years ahead</th></tr><tr><th>Typical miss</th><th class="num">Model</th><th class="num">Last year</th><th class="num">Model</th><th class="num">Last year</th></tr>` +
+    ["1-unit buildings", "2+ unit buildings"].map((b) => `<tr><td>${b}</td>${cell(ty(b, 1).model.median_abs_pct_error, ty(b, 1).last_year.median_abs_pct_error)}${cell(ty(b, 5).model.median_abs_pct_error, ty(b, 5).last_year.median_abs_pct_error)}</tr>`).join("");
+
+  const regions = [...new Set(bt.timing.map((r) => r.region))];
+  $("bt-timing").innerHTML = `<tr><th>Census region</th><th>Years</th><th class="num">Average</th><th class="num">Range</th></tr>` + regions.map((g) => {
+    const rows = bt.timing.filter((r) => r.region === g), ratios = rows.map((r) => r.implied_thousands / r.published_thousands);
+    const avg = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+    return `<tr><td>${g[0].toUpperCase() + g.slice(1)}</td><td>${rows[0].year}-${rows.at(-1).year}</td><td class="num">${Math.round(100 * avg)}%</td><td class="num">${Math.round(100 * Math.min(...ratios))}-${Math.round(100 * Math.max(...ratios))}%</td></tr>`;
+  }).join("");
+}
+
+function renderPaths() {
+  const box = $("bt-paths"), data = btScope === "us" || !bt.state_series ? bt.national : bt.state_series;
+  const y0 = bt.series_from, years = data.actual.length, last = y0 + years - 1, cov = covidOn();
+  const actualAt = (yr) => data.actual[yr - y0];
+  const W = 900, H = 320, L = 56, R = 96, T = 14, B = 30;
+  const x = (yr) => L + (W - L - R) * (yr - y0) / (years - 1);
+  // Forecast points to draw: [{o, yr, v, covid}]
+  let shown = [], context = [];
+  if (btView === "one") {
+    shown = data.paths.map((p) => ({ o: p.origin, yr: p.origin + 1, v: p.predicted[0] }));
+  } else {
+    const sel = data.paths.find((p) => p.origin === btStart) || data.paths[0];
+    btStart = sel.origin;
+    shown = sel.predicted.map((v, k) => ({ o: sel.origin, yr: sel.origin + 1 + k, v }));
+    context = data.paths.filter((p) => p !== sel && !(cov && isCovid(p.origin, -1)));
+  }
+  shown.forEach((pt) => (pt.covid = cov && isCovid(pt.o, pt.yr)));
+  // Zoomed y-axis: lines don't need a zero baseline, and zooming makes misses visible.
+  const vals = data.actual.concat(shown.map((p) => p.v), ...context.map((p) => p.predicted));
+  const ticks = niceTicks(Math.min(...vals) * 0.92, Math.max(...vals) * 1.03);
+  const lo = ticks[0], hi = ticks.at(-1);
+  const y = (v) => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Actual permits and back-test forecasts">`;
+  // COVID band
+  const c0 = bt.covid_years[0], c1 = bt.covid_years.at(-1);
+  svg += `<rect x="${x(c0 - 0.5)}" y="${T}" width="${x(c1 + 0.5) - x(c0 - 0.5)}" height="${H - T - B}" fill="${cov ? "#fff4dc" : "#f6f7f9"}"/>`;
+  svg += `<text x="${(x(c0 - 0.5) + x(c1 + 0.5)) / 2}" y="${T + 14}" text-anchor="middle" style="font-weight:700;fill:${cov ? "var(--warn)" : "var(--muted)"}">COVID</text>`;
+  svg += ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${short(t)}</text>`).join("");
+  for (let yr = y0; yr <= last; yr++) if ((last - yr) % 3 === 0) svg += `<text x="${x(yr)}" y="${H - 9}" text-anchor="middle">${yr}</text>`;
+  // Context paths (five-year view): faint grey.
+  for (const p of context) {
+    const pts = [[p.origin, actualAt(p.origin)], ...p.predicted.map((v, k) => [p.origin + 1 + k, v])];
+    svg += `<polyline fill="none" stroke="#c9ced8" stroke-width="1.5" stroke-linejoin="round" points="${pts.map(([a, b]) => `${x(a)},${y(b)}`).join(" ")}"/>`;
+  }
+  // Misses: thin connectors between forecast and actual.
+  for (const pt of shown) svg += `<line x1="${x(pt.yr)}" x2="${x(pt.yr)}" y1="${y(pt.v)}" y2="${y(actualAt(pt.yr))}" stroke="${pt.covid ? "#c9ced8" : "var(--series-1)"}" stroke-width="2" stroke-opacity=".35"/>`;
+  // Actual line.
+  svg += `<polyline fill="none" stroke="var(--actual)" stroke-width="2.5" stroke-linejoin="round" points="${data.actual.map((v, i) => `${x(y0 + i)},${y(v)}`).join(" ")}"/>`;
+  svg += data.actual.map((v, i) => `<circle cx="${x(y0 + i)}" cy="${y(v)}" r="4" fill="var(--actual)" stroke="#fff" stroke-width="2"/>`).join("");
+  // Forecast line: broken where points are COVID-affected and left out.
+  const segs = [];
+  let cur = btView === "paths" ? [[shown[0].o, actualAt(shown[0].o)]] : [];
+  for (const pt of shown) {
+    if (pt.covid) { if (cur.length > 1) segs.push(cur); cur = []; continue; }
+    cur.push([pt.yr, pt.v]);
+  }
+  if (cur.length > 1) segs.push(cur);
+  for (const sg of segs) svg += `<polyline fill="none" stroke="var(--series-1)" stroke-width="3" stroke-linejoin="round" points="${sg.map(([a, b]) => `${x(a)},${y(b)}`).join(" ")}"/>`;
+  for (const pt of shown) svg += pt.covid
+    ? `<circle cx="${x(pt.yr)}" cy="${y(pt.v)}" r="4" fill="#fff" stroke="#aab1bf" stroke-width="2"/>`
+    : `<circle cx="${x(pt.yr)}" cy="${y(pt.v)}" r="4.5" fill="var(--series-1)" stroke="#fff" stroke-width="2"/>`;
+  if (btView === "paths") svg += `<circle cx="${x(shown[0].o)}" cy="${y(actualAt(shown[0].o))}" r="7" fill="none" stroke="var(--series-1)" stroke-width="2"/>`;
+  // Direct labels at the right edge.
+  let la = y(actualAt(last));
+  if (btView === "one") {
+    // Both lines end at the last year: push the labels apart by at least 15px.
+    let lf = y(shown.at(-1).v);
+    if (Math.abs(la - lf) < 15) {
+      const mid = (la + lf) / 2, up = la <= lf;
+      la = mid + (up ? -7.5 : 7.5);
+      lf = mid + (up ? 7.5 : -7.5);
+    }
+    svg += `<text x="${x(last) + 10}" y="${lf + 4}" style="font-weight:700;fill:var(--series-1)">Forecast</text>`;
+  } else {
+    // Label the chosen forecast at its starting point, clear of the lines.
+    const sx = x(shown[0].o), sy = y(actualAt(shown[0].o));
+    svg += `<text x="${sx}" y="${sy - 14}" text-anchor="middle" style="font-weight:700;fill:var(--series-1)">Made in ${btStart}</text>`;
+  }
+  svg += `<text x="${x(last) + 10}" y="${la + 4}" style="font-weight:700;fill:var(--ink)">Actual</text>`;
+  svg += `<line id="bt-cross" y1="${T}" y2="${H - B}" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/><rect id="bt-hit" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg><div class="tip" id="bt-tip"></div>`;
+  box.innerHTML = svg;
+
+  $("bt-paths-hint").textContent = btView === "one"
+    ? "Black: permits actually issued. Blue: what the model forecast for each year, using only data up to the year before. The thin lines between them are the misses."
+    : "Pick the year a forecast was made. Blue: that forecast for the next five years, starting from the circled year. Grey: forecasts made in other years.";
+  $("bt-paths-legend").innerHTML = `<span><i style="background:var(--actual)"></i>Actual permits</span><span><i style="background:var(--series-1)"></i>${btView === "one" ? "Forecast made one year earlier" : "Forecast made in " + btStart}</span>` +
+    (btView === "paths" ? `<span><i style="background:#c9ced8"></i>Forecasts made in other years</span>` : "") +
+    (cov ? `<span><i class="sq" style="background:#fff;border:2px solid #aab1bf;border-radius:50%;width:9px;height:9px"></i>COVID-affected, left out of scores</span>` : "");
+  $("bt-starts").style.display = btView === "paths" ? "flex" : "none";
+  $("bt-starts").innerHTML = btView === "paths" ? `<span class="hint" style="margin:0 4px 0 0">Forecast made in:</span>` + data.paths.map((p) => {
+    const off = cov && isCovid(p.origin, -1);
+    return `<button data-start="${p.origin}" class="${p.origin === btStart ? "on" : ""}" ${off ? "disabled title=\"Started from a COVID year\"" : ""}>${p.origin}</button>`;
+  }).join("") : "";
+  $("bt-starts").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => { btStart = +b.dataset.start; renderPaths(); }));
+
+  const svgEl = box.querySelector("svg"), tip = $("bt-tip"), cross = $("bt-cross");
+  box.querySelector("#bt-hit").addEventListener("mousemove", (ev) => {
+    const r = svgEl.getBoundingClientRect(), sx = (ev.clientX - r.left) * W / r.width;
+    const yr = Math.max(y0, Math.min(last, Math.round(y0 + (sx - L) / (W - L - R) * (years - 1))));
+    cross.setAttribute("x1", x(yr)); cross.setAttribute("x2", x(yr)); cross.setAttribute("visibility", "visible");
+    const actual = actualAt(yr), pt = shown.find((p) => p.yr === yr);
+    tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px">${yr}${bt.covid_years.includes(yr) ? '<span class="tag">COVID</span>' : ""}</div>Actual: <b>${fmt(actual)}</b>` +
+      (pt ? `<div style="margin-top:4px">Forecast made in ${pt.o}: <b>${fmt(pt.v)}</b> <span style="color:var(--muted)">${signed(pt.v / actual - 1)}</span></div>` +
+        (pt.covid ? `<div style="color:var(--warn);margin-top:2px">COVID-affected: left out of the scores</div>` : "")
+        : `<div style="margin-top:4px;color:var(--muted)">No forecast shown for this year.</div>`);
+    tip.style.display = "block";
+    const px = x(yr) * r.width / W;
+    tip.style.left = (px > r.width / 2 ? Math.max(4, px - tip.offsetWidth - 14) : Math.min(px + 14, r.width - tip.offsetWidth - 4)) + "px";
+    tip.style.top = Math.max(4, (H - B - 6) * r.height / H - tip.offsetHeight) + "px";
+  });
+  box.querySelector("#bt-hit").addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+}
+
+function renderErrors() {
+  const box = $("bt-errors"), f = bt.five_year_totals;
+  const groups = (covidOn() ? bt.by_horizon_excl_covid : bt.by_horizon).map((r) => ({ label: `${r.years_ahead} yr${r.years_ahead > 1 ? "s" : ""} ahead`, n: r.model.n, v: [r.model, r.last_year, r.five_year_avg].map((m) => m.median_abs_pct_error) }));
+  groups.push({ label: covidOn() ? "5-year total*" : "5-year total", n: f.model.n, v: [f.model, f.last_year, f.five_year_avg].map((m) => m.median_abs_pct_error) });
+  const names = ["Our model", "Repeat last year", "Repeat 5-year average"], colors = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
+  const W = 900, H = 240, L = 44, R = 10, T = 10, B = 30;
+  const max = Math.max(...groups.flatMap((g) => g.v)) * 1.12, gw = (W - L - R) / groups.length, bw = Math.min(30, (gw - 28) / 3);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Median forecast error by years ahead">`;
+  svg += [0, 0.05, 0.1, 0.15, 0.2, 0.25].filter((t) => t <= max).map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${Math.round(100 * t)}%</text>`).join("");
+  groups.forEach((g, gi) => {
+    const cx = L + gw * gi + gw / 2, x0 = cx - (3 * bw + 4) / 2;
+    g.v.forEach((v, k) => { svg += `<path class="bar" data-g="${gi}" data-k="${k}" d="${barPath(x0 + k * (bw + 2), y(v), bw, y(0) - y(v))}" fill="${colors[k]}"/>`; });
+    svg += `<text x="${cx}" y="${H - 10}" text-anchor="middle" style="${gi === groups.length - 1 ? "font-weight:700;fill:var(--ink)" : ""}">${g.label}</text>`;
+  });
+  svg += `</svg><div class="tip" id="bt-tip2"></div>`;
+  box.innerHTML = svg;
+  const tip = $("bt-tip2"), svgEl = box.querySelector("svg");
+  box.querySelectorAll(".bar").forEach((b) => {
+    b.addEventListener("mousemove", (ev) => {
+      const g = groups[+b.dataset.g], k = +b.dataset.k, r = svgEl.getBoundingClientRect();
+      tip.innerHTML = `<div style="font-weight:700">${g.label}</div>${names[k]}: <b>${pct1(g.v[k])}</b> typical miss<div style="color:var(--muted)">${g.n} state forecasts</div>`;
+      tip.style.display = "block";
+      tip.style.left = Math.min(ev.clientX - r.left + 12, r.width - tip.offsetWidth - 4) + "px";
+      tip.style.top = Math.max(0, ev.clientY - r.top - 60) + "px";
+    });
+    b.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+  });
+  $("bt-errors-note").textContent = covidOn() ? "*Five-year totals always include COVID years: every five-year window from 2016 to 2025 contains 2020 or 2021." : "";
+  $("bt-errors-table").innerHTML = `<tr><th>Forecast</th><th class="num">State forecasts</th>${names.map((n) => `<th class="num">${n}</th>`).join("")}</tr>` +
+    groups.map((g) => { const m = Math.min(...g.v); return `<tr><td>${g.label}</td><td class="num">${g.n}</td>${g.v.map((v) => `<td class="num${v === m ? " best" : ""}">${pct1(v)}</td>`).join("")}</tr>`; }).join("");
+}
+
+document.querySelectorAll("#bt-scope button").forEach((b) => b.addEventListener("click", () => {
+  btScope = b.dataset.scope;
+  document.querySelectorAll("#bt-scope button").forEach((x) => x.classList.toggle("on", x === b));
+  renderPaths();
+}));
+document.querySelectorAll("#bt-view button").forEach((b) => b.addEventListener("click", () => {
+  btView = b.dataset.view;
+  document.querySelectorAll("#bt-view button").forEach((x) => x.classList.toggle("on", x === b));
+  renderPaths();
+}));
+$("bt-covid").addEventListener("change", () => {
+  if (covidOn() && bt.covid_years.includes(btStart)) btStart = 2018;
+  renderBacktest();
+});
+
 $("state").addEventListener("change", loadCompare);
+$("state").addEventListener("change", loadBacktest);
 for (const id of ["rate", "migration", "price"]) $(id).addEventListener("input", loadCompare);
 $("reset").addEventListener("click", () => { $("rate").value = 0; $("migration").value = 1; $("price").value = 0; loadCompare(); });
 $("ask").addEventListener("click", ask);

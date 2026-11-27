@@ -13,6 +13,7 @@
 //! * [`web`] — local web UI (`housing-web`) over the model and the panel.
 //! * [`mcp`] — a stdio MCP server exposing the same queries and the panel.
 
+pub mod backtest;
 pub mod engine;
 pub mod evals;
 pub mod forecast;
